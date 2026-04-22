@@ -37,6 +37,7 @@ export const config = {
     "/create-pet/:path*",
     "/home/:path*",
     "/my-pet/:path*",
+    "/my-pets/:path*",
     "/shop/:path*",
     "/social/:path*",
   ],

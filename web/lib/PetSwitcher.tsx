@@ -23,6 +23,7 @@ export function PetSwitcher({
     const fetchPets = async () => {
       const response = await fetch(`${API_BASE_URL}/pets`, {
         cache: "no-store",
+        credentials: "include",
         headers: buildAuthHeaders(authToken),
       });
 

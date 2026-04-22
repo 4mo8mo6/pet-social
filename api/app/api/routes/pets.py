@@ -25,6 +25,7 @@ from app.services.pet_stats import (
 from app.services.pets import (
     build_message_response,
     build_pet_response,
+    delete_pet_with_dependents,
     get_owned_pet_or_404,
 )
 
@@ -336,8 +337,7 @@ def delete_pet(
 ) -> None:
     pet = get_owned_pet_or_404(db, pet_id, current_user.id)
     try:
-        db.query(Message).filter(Message.pet_id == pet_id).delete(synchronize_session=False)
-        db.delete(pet)
+        delete_pet_with_dependents(db, pet)
         db.commit()
     except SQLAlchemyError as error:
         db.rollback()

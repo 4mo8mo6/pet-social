@@ -1,5 +1,6 @@
 "use client";
 
+import { EmptyState } from "./feedback";
 import { getSpeciesVisual, getTemperamentTag } from "./pet-display";
 import type {
   Friendship,
@@ -35,6 +36,7 @@ type SocialTargetsPanelProps = {
   onRequestFriendship: (targetId: number) => void;
   onAcceptFriendship: (friendId: number) => void;
   onRejectFriendship: (friendId: number) => void;
+  className?: string;
 };
 
 type SocialConversationPanelProps = {
@@ -47,21 +49,22 @@ type SocialConversationPanelProps = {
   isActing: boolean;
   onDraftMessageChange: (value: string) => void;
   onSendMessage: () => void;
+  className?: string;
 };
 
 type SocialTaskHistoryPanelProps = {
   tasks: SocialTaskHistoryItem[];
+  className?: string;
 };
 
 type SocialFriendshipsPanelProps = {
   friendships: Friendship[];
+  className?: string;
 };
 
 function SectionEmptyState({ message }: { message: string }) {
   return (
-    <div className={`${ui.cardGhost} px-4 py-8 text-sm text-stone-500`}>
-      {message}
-    </div>
+    <EmptyState title="暂无内容" description={message} className="px-4 py-7" />
   );
 }
 
@@ -75,11 +78,12 @@ export function SocialTargetsPanel({
   onRequestFriendship,
   onAcceptFriendship,
   onRejectFriendship,
+  className,
 }: SocialTargetsPanelProps) {
   const candidateSections = buildSocialCandidateSections(candidates);
 
   return (
-    <section className={`${ui.cardWarm} p-6`}>
+    <section className={cx(`${ui.cardWarm} flex min-h-[520px] flex-col p-5`, className)}>
       <div className="flex items-start justify-between gap-4">
         <div>
           <h2 className="text-2xl font-semibold text-gray-900">候选对象</h2>
@@ -106,7 +110,7 @@ export function SocialTargetsPanel({
         </div>
       ) : null}
 
-      <div className="mt-6 space-y-3">
+      <div className="mt-6 min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
         {candidateSections.length === 0 ? (
           <SectionEmptyState message="当前还没有可互动的其他宠物。" />
         ) : null}
@@ -258,6 +262,7 @@ export function SocialConversationPanel({
   isActing,
   onDraftMessageChange,
   onSendMessage,
+  className,
 }: SocialConversationPanelProps) {
   const latestReplyVisual = getSocialEmotionVisual(latestReply?.emotion);
   const currentSocialVisual = getCurrentSocialEmotionVisual(
@@ -277,7 +282,7 @@ export function SocialConversationPanel({
     : null;
 
   return (
-    <section className={`${ui.card} p-6`}>
+    <section className={cx(`${ui.cardElevated} flex min-h-[620px] flex-col p-5`, className)}>
       <div>
         <h2 className="text-xl font-semibold text-gray-900">当前会话</h2>
         <p className="mt-2 text-sm leading-6 text-gray-600">
@@ -285,7 +290,7 @@ export function SocialConversationPanel({
         </p>
       </div>
 
-      <div className={`${ui.cardSoft} mt-4`}>
+      <div className={`${ui.cardSoft} mt-4 flex min-h-0 flex-1 flex-col`}>
         {selectedCandidate ? (
           <div className={`${ui.cardInset} mb-4 px-4 py-4`}>
             <div className="flex flex-wrap items-start justify-between gap-4">
@@ -371,7 +376,7 @@ export function SocialConversationPanel({
         ) : null}
         {conversation ? (
           <>
-            <div className="max-h-80 space-y-3 overflow-y-auto">
+            <div className="min-h-[320px] flex-1 space-y-3 overflow-y-auto pr-1">
               {conversation.messages.map((message) => {
                 const isOwnMessage = message.senderPetId === petId;
                 const emotionVisual = getSocialEmotionVisual(message.emotion);
@@ -423,7 +428,7 @@ export function SocialConversationPanel({
                   event.preventDefault();
                   onSendMessage();
                 }}
-                className="mt-4 space-y-3"
+                className="mt-4 space-y-3 border-t border-[#eee4d6] pt-4"
               >
                 <input
                   type="text"
@@ -455,9 +460,12 @@ export function SocialConversationPanel({
   );
 }
 
-export function SocialTaskHistoryPanel({ tasks }: SocialTaskHistoryPanelProps) {
+export function SocialTaskHistoryPanel({
+  tasks,
+  className,
+}: SocialTaskHistoryPanelProps) {
   return (
-    <section className={`${ui.card} p-6`}>
+    <section className={cx(`${ui.sidebarPanel} p-5`, className)}>
       <div>
         <h2 className="text-xl font-semibold text-gray-900">最近社交任务</h2>
         <p className="mt-2 text-sm leading-6 text-gray-600">
@@ -465,7 +473,7 @@ export function SocialTaskHistoryPanel({ tasks }: SocialTaskHistoryPanelProps) {
         </p>
       </div>
 
-      <div className="mt-4 space-y-3">
+      <div className="mt-4 max-h-[360px] space-y-3 overflow-y-auto pr-1">
         {tasks.length === 0 ? (
           <SectionEmptyState message="当前还没有社交任务记录。" />
         ) : null}
@@ -501,9 +509,10 @@ export function SocialTaskHistoryPanel({ tasks }: SocialTaskHistoryPanelProps) {
 
 export function SocialFriendshipsPanel({
   friendships,
+  className,
 }: SocialFriendshipsPanelProps) {
   return (
-    <section className={`${ui.card} p-6`}>
+    <section className={cx(`${ui.sidebarPanel} p-5`, className)}>
       <div>
         <h2 className="text-xl font-semibold text-gray-900">好友关系</h2>
         <p className="mt-2 text-sm leading-6 text-gray-600">
@@ -511,7 +520,7 @@ export function SocialFriendshipsPanel({
         </p>
       </div>
 
-      <div className="mt-4 space-y-3">
+      <div className="mt-4 max-h-[360px] space-y-3 overflow-y-auto pr-1">
         {friendships.length === 0 ? (
           <SectionEmptyState message="当前还没有建立任何好友关系。" />
         ) : null}

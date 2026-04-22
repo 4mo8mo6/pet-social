@@ -1,6 +1,6 @@
 # Railway 部署执行单
 
-更新时间：2026-04-01
+更新时间：2026-04-21
 
 这份文档是给你直接在 Railway 控制台照着点的。
 
@@ -13,9 +13,10 @@
 1. 把 `web`
 2. 把 `api`
 3. 把 `Postgres`
-4. 把 `Redis`
 
-四个服务放到同一个 Railway Project 里。
+三个必需服务放到同一个 Railway Project 里。
+
+Redis 当前只是后续缓存或队列能力的预留项；业务代码暂不读写 Redis，当前部署不需要创建 Redis 服务。
 
 当前最省事的方案是：
 
@@ -40,9 +41,8 @@
 - `web`
 - `api`
 - `postgres`
-- `redis`
 
-如果你已经建过服务，名字不一样也能用，但文档里的 `${{api.xxx}}`、`${{postgres.xxx}}`、`${{redis.xxx}}` 需要跟着改。
+如果你已经建过服务，名字不一样也能用，但文档里的 `${{api.xxx}}`、`${{postgres.xxx}}` 需要跟着改。
 
 ---
 
@@ -53,17 +53,15 @@
 1. 打开 Railway
 2. 新建一个 Project
 3. 连接这个仓库
-4. 在同一个 Project 里准备 4 个服务：
+4. 在同一个 Project 里准备 3 个服务：
    - `web`
    - `api`
    - `postgres`
-   - `redis`
 
 其中：
 
 - `web` 和 `api` 连接同一个 monorepo
 - `postgres` 用 Railway 托管 Postgres
-- `redis` 用 Railway 托管 Redis
 
 ---
 
@@ -106,12 +104,11 @@ Railway 会直接用这个 Dockerfile。
 
 ## 4. 创建托管数据库
 
-在同一个 Project 里新增两个托管服务：
+在同一个 Project 里新增一个托管服务：
 
 1. `postgres`
-2. `redis`
 
-这里先不用手动抄连接串，后面直接用 Railway 的引用变量。
+这里先不用手动抄连接串，后面直接用 Railway 的引用变量。Redis 当前不需要创建；如果后续真正接入缓存或队列，再额外新增托管 Redis。
 
 ---
 
@@ -157,7 +154,6 @@ API_HOST=0.0.0.0
 CORS_ALLOWED_ORIGINS=https://${{web.RAILWAY_PUBLIC_DOMAIN}}
 
 DATABASE_URL=${{postgres.DATABASE_URL}}
-REDIS_URL=${{redis.REDIS_URL}}
 
 SECONDME_API_BASE_URL=https://api.mindverse.com/gate/lab
 SECONDME_CLIENT_ID=<填你的 SecondMe Client ID>
@@ -172,10 +168,10 @@ LLM_MODEL=qwen-flash
 这里的重点：
 
 - `DATABASE_URL` 直接引用 `postgres` 服务的连接串
-- `REDIS_URL` 直接引用 `redis` 服务的连接串
+- Redis 相关变量当前不需要填写；`REDIS_URL` 仍保留为后续缓存或队列能力的预留项
 - `CORS_ALLOWED_ORIGINS` 直接指向 `web` 的公网域名
 
-如果你的数据库服务名不是 `postgres`，或者 Redis 服务名不是 `redis`，把引用里的服务名换掉就行。
+如果你的数据库服务名不是 `postgres`，把引用里的服务名换掉就行。
 
 ---
 
@@ -211,11 +207,10 @@ SECONDME_REFRESH_ENDPOINT=https://api.mindverse.com/gate/lab/api/oauth/token/ref
 按下面顺序点最稳：
 
 1. 让 `postgres` 就绪
-2. 让 `redis` 就绪
-3. 部署 `api`
-4. 打开 `https://<api-domain>/health`
-5. 确认看到 `status = ok`
-6. 部署 `web`
+2. 部署 `api`
+3. 打开 `https://<api-domain>/health`
+4. 确认看到 `status = ok`
+5. 部署 `web`
 
 如果变量修改后 Railway 出现 staged changes，记得点 Deploy，让变量真正生效。
 
@@ -242,7 +237,7 @@ SECONDME_REFRESH_ENDPOINT=https://api.mindverse.com/gate/lab/api/oauth/token/ref
 - `status: ok`
 - `environment: production`
 - `services.postgres.mode`
-- `services.redis.mode`
+- `reservedServices.redis.runtimeUsage: reserved_not_required`
 
 ---
 
@@ -307,7 +302,7 @@ redirectUri=https://<web-domain>/api/auth/secondme/callback
 
 当前最短路径是：
 
-1. 在 Railway 建四个服务
+1. 在 Railway 建三个必需服务
 2. 生成 `web` 和 `api` 的公网域名
 3. 粘贴文档里的两段变量
 4. 先通 `/health`

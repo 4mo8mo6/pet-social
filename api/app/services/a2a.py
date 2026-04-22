@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import json
+import os
+import socket
+from ipaddress import ip_address
 from datetime import datetime, timezone
 from socket import timeout as SocketTimeout
 from typing import Any
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlparse, urlunparse
 from urllib.request import Request as UrlRequest, urlopen
 from uuid import uuid4
 
@@ -19,6 +23,9 @@ from app.services.pet_personality import infer_temperament_label
 A2A_TASK_PREFIX = "task-"
 A2A_JSON_RPC_VERSION = "2.0"
 A2A_HTTP_TIMEOUT_SECONDS = 15
+A2A_ALLOWED_HOSTS_ENV = "A2A_ALLOWED_HOSTS"
+BLOCKED_HOST_SUFFIXES = (".localhost", ".local")
+BLOCKED_HOSTS = {"localhost"}
 
 
 def build_json_rpc_error(
@@ -434,6 +441,134 @@ def parse_outbound_message_send_response(
     }
 
 
+def read_allowed_a2a_hosts() -> set[str]:
+    raw_hosts = os.getenv(A2A_ALLOWED_HOSTS_ENV, "")
+    return {
+        host.strip().lower()
+        for host in raw_hosts.split(",")
+        if host.strip()
+    }
+
+
+def host_matches_allowed(hostname: str, allowed_host: str) -> bool:
+    normalized_hostname = hostname.lower().rstrip(".")
+    normalized_allowed_host = allowed_host.lower().rstrip(".")
+
+    if normalized_allowed_host.startswith("*."):
+        suffix = normalized_allowed_host[1:]
+        return normalized_hostname.endswith(suffix)
+
+    return normalized_hostname == normalized_allowed_host
+
+
+def ensure_hostname_is_public(hostname: str, port: int) -> None:
+    normalized_hostname = hostname.lower().rstrip(".")
+
+    if normalized_hostname in BLOCKED_HOSTS or normalized_hostname.endswith(
+        BLOCKED_HOST_SUFFIXES
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="External A2A agent URL host is not allowed.",
+        )
+
+    try:
+        literal_ip = ip_address(normalized_hostname.strip("[]"))
+    except ValueError:
+        literal_ip = None
+
+    if literal_ip is not None:
+        resolved_ips = {literal_ip}
+    else:
+        try:
+            address_infos = socket.getaddrinfo(
+                normalized_hostname,
+                port,
+                type=socket.SOCK_STREAM,
+            )
+        except OSError as error:
+            raise HTTPException(
+                status_code=400,
+                detail="External A2A agent URL host could not be resolved.",
+            ) from error
+
+        resolved_ips = {
+            ip_address(info[4][0])
+            for info in address_infos
+        }
+
+    for resolved_ip in resolved_ips:
+        if (
+            resolved_ip.is_loopback
+            or resolved_ip.is_private
+            or resolved_ip.is_link_local
+            or resolved_ip.is_multicast
+            or resolved_ip.is_reserved
+            or resolved_ip.is_unspecified
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="External A2A agent URL resolves to a non-public address.",
+            )
+
+
+def validate_external_a2a_agent_url(agent_url: str) -> str:
+    normalized_agent_url = agent_url.strip()
+
+    if not normalized_agent_url:
+        raise HTTPException(
+            status_code=400,
+            detail="External A2A agent URL cannot be empty.",
+        )
+
+    parsed_url = urlparse(normalized_agent_url)
+
+    if parsed_url.scheme.lower() != "https":
+        raise HTTPException(
+            status_code=400,
+            detail="External A2A agent URL must use HTTPS.",
+        )
+
+    if parsed_url.username or parsed_url.password:
+        raise HTTPException(
+            status_code=400,
+            detail="External A2A agent URL cannot include credentials.",
+        )
+
+    hostname = (parsed_url.hostname or "").strip()
+
+    if not hostname:
+        raise HTTPException(
+            status_code=400,
+            detail="External A2A agent URL host is required.",
+        )
+
+    allowed_hosts = read_allowed_a2a_hosts()
+
+    if not allowed_hosts or not any(
+        host_matches_allowed(hostname, allowed_host)
+        for allowed_host in allowed_hosts
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="External A2A agent URL host is not registered.",
+        )
+
+    port = parsed_url.port or 443
+    ensure_hostname_is_public(hostname, port)
+
+    return urlunparse(
+        (
+            "https",
+            parsed_url.netloc,
+            parsed_url.path or "/",
+            "",
+            parsed_url.query,
+            "",
+        )
+    )
+
+
 def send_message_to_external_a2a_agent(
     agent_url: str,
     message_text: str,
@@ -441,12 +576,7 @@ def send_message_to_external_a2a_agent(
     request_id: str | None = None,
     action_data: AgentActionPayload | None = None,
 ) -> dict[str, Any]:
-    normalized_agent_url = agent_url.strip()
-    if not normalized_agent_url:
-        raise HTTPException(
-            status_code=400,
-            detail="External A2A agent URL cannot be empty.",
-        )
+    normalized_agent_url = validate_external_a2a_agent_url(agent_url)
 
     request_payload = build_outbound_message_send_payload(
         message_text,
@@ -525,14 +655,8 @@ def create_outbound_a2a_task_for_pet(
     source_agent_url: str | None = None,
     action_data: AgentActionPayload | None = None,
 ) -> tuple[PetTask, dict[str, Any]]:
-    normalized_agent_url = agent_url.strip()
+    normalized_agent_url = validate_external_a2a_agent_url(agent_url)
     normalized_message_text = message_text.strip()
-
-    if not normalized_agent_url:
-        raise HTTPException(
-            status_code=400,
-            detail="External A2A agent URL cannot be empty.",
-        )
 
     if not normalized_message_text:
         raise HTTPException(

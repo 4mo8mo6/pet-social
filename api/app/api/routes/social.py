@@ -437,7 +437,7 @@ def send_external_a2a_message(
         task, remote_result = create_outbound_a2a_task_for_pet(
             db,
             source_pet,
-            payload.agentUrl,
+            str(payload.agentUrl),
             payload.message,
             source_agent_url=source_agent_url,
         )
@@ -461,7 +461,7 @@ def send_external_a2a_message(
         message=response_message,
         task=build_pet_task_response(task),
         remote={
-            "agentUrl": payload.agentUrl.strip(),
+            "agentUrl": str(payload.agentUrl).strip(),
             "taskId": remote_result["id"],
             "state": remote_state,
             "replyText": remote_result["replyText"],

@@ -1,7 +1,17 @@
 from fastapi import HTTPException, status
+from sqlalchemy import delete, or_, select
 from sqlalchemy.orm import Session
 
-from app.models import Message, Pet
+from app.models import (
+    Message,
+    Pet,
+    PetConversation,
+    PetDailyQuota,
+    PetFriendship,
+    PetSocialMessage,
+    PetTask,
+    PlacedFurniture,
+)
 from app.schemas import MessageResponse, PetResponse
 
 
@@ -55,3 +65,38 @@ def get_owned_pet_or_404(db: Session, pet_id: int, user_id: int) -> Pet:
         )
 
     return pet
+
+
+def delete_pet_with_dependents(db: Session, pet: Pet) -> None:
+    pet_id = pet.id
+    conversation_ids = select(PetConversation.id).where(
+        or_(PetConversation.pet_a_id == pet_id, PetConversation.pet_b_id == pet_id)
+    )
+
+    for statement in (
+        delete(PetSocialMessage).where(
+            or_(
+                PetSocialMessage.sender_pet_id == pet_id,
+                PetSocialMessage.conversation_id.in_(conversation_ids),
+            )
+        ),
+        delete(PetConversation).where(
+            or_(PetConversation.pet_a_id == pet_id, PetConversation.pet_b_id == pet_id)
+        ),
+        delete(PetFriendship).where(
+            or_(
+                PetFriendship.pet_a_id == pet_id,
+                PetFriendship.pet_b_id == pet_id,
+                PetFriendship.initiated_by == pet_id,
+            )
+        ),
+        delete(PetTask).where(
+            or_(PetTask.target_pet_id == pet_id, PetTask.source_pet_id == pet_id)
+        ),
+        delete(PetDailyQuota).where(PetDailyQuota.pet_id == pet_id),
+        delete(PlacedFurniture).where(PlacedFurniture.pet_id == pet_id),
+        delete(Message).where(Message.pet_id == pet_id),
+    ):
+        db.execute(statement.execution_options(synchronize_session=False))
+
+    db.delete(pet)

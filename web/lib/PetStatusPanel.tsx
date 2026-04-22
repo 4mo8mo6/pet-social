@@ -163,6 +163,7 @@ export function PetStatusPanel({
     try {
       const response = await fetch(`${API_BASE_URL}/pets/${petId}/${endpoint}`, {
         method: "POST",
+        credentials: "include",
         headers: buildAuthHeaders(authToken),
       });
 

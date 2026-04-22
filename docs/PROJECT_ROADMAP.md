@@ -13,13 +13,14 @@
 
 ---
 
-## 当前完成情况（已推进到 v0.3，Phase 3 进行中）
+## 当前完成情况（已推进到 v0.6+，A2A、社区、家具与自动社交已有最小闭环）
 
 ### 已实现功能
 
 #### 1. 用户系统
-- 用户注册/登录（邮箱 + 密码）
-- Session-based 认证（Bearer Token）
+- 用户注册/登录（邮箱 + 密码）与 SecondMe 登录
+- HttpOnly Session-based 认证（AuthSession + Cookie，兼容 Bearer Token）
+- SecondMe 账号可按邮箱与本地账号关联
 - 用户与宠物的所有权关系（一对多，后端已支持多宠物列表）
 
 #### 2. 宠物创建与管理
@@ -55,18 +56,25 @@
 - 宠物会根据状态在场景中移动，并按品种切换不同轮廓
 - 点击宠物可弹出互动菜单，并在场景内直接查看状态或打开聊天窗口
 
-#### 7. 技术架构
+#### 7. A2A、社区与自动社交 ✅
+- A2A Agent Card 与 JSON-RPC 入口已接入：`/.well-known/agent.json`、`/a2a/pets/{id}/agent.json`、`/a2a/pets/{id}`
+- `message/send`、`tasks/get`、`tasks/cancel` 已映射到站内 PetTask 与消息历史
+- 社区候选、好友请求、好友列表、接受/删除好友、社交频控已具备最小闭环
+- APScheduler 已接入状态衰减与自动社交 worker，页面加载仍保持只读，避免打开社区页产生副作用
+
+#### 8. 技术架构
 - **前端**：Next.js 16 + React 19 + TypeScript + Tailwind CSS 4
 - **后端**：FastAPI + SQLAlchemy + PostgreSQL
-- **环境预留**：Redis 容器已启动，业务层暂未接入
-- **部署**：Docker Compose 一键启动（api + postgres + redis）
+- **后台任务**：APScheduler 状态衰减与自动社交 worker
+- **环境预留**：Redis 配置保留给后续缓存或队列能力，当前业务代码不读写，默认 Docker Compose 不启动 Redis
+- **部署**：Docker Compose 一键启动（web + api + postgres）
 - **代码质量**：已完成模块化拆分，核心页面与服务已按阶段拆开
 
 ### 当前数据模型
 
 ```
 User (用户)
-├── id, email, password_hash, created_at
+├── id, email, password_hash, secondme_user_id, secondme_* tokens, created_at
 
 Pet (宠物) —— 一个用户可拥有多只
 ├── id, owner_id (FK → User), pet_name, species, color, size
@@ -99,8 +107,8 @@ PetSocialMessage (宠物间消息)
 
 | 问题 | 说明 |
 |------|------|
-| Redis 未使用 | 容器已启动，但没有任何业务读写代码 |
-| A2A 协议层未开始 | Phase 4 相关 Agent Card、JSON-RPC 入口、Task 映射都还没实现 |
+| Redis 为预留项 | 当前业务代码不读写 Redis，默认 Docker Compose 不启动 Redis，仅保留环境变量给后续缓存或队列能力 |
+| 旧文档状态需同步 | A2A Agent Card、JSON-RPC、Task 映射、外部调用与自动社交 worker 已实现，页面/路线图文案不应再写“待开始” |
 
 ---
 
@@ -214,7 +222,7 @@ def apply_decay_and_save(pet: Pet, db: Session) -> None:
 ```
 
 优点：GET 无写副作用，可安全缓存、重放、并发访问；写操作集中在 POST 命令中。
-后续如需周期推送通知（如"宠物饿了"），再引入 APScheduler 或 Redis + worker。
+周期性状态衰减与自动社交已由 APScheduler 承接；后续如需跨进程队列、缓存或通知推送，再评估 Redis worker。
 
 **2.3 心情计算** ✅ 已完成
 ```python
@@ -307,16 +315,13 @@ class PetTask(Base):
 - ✅ `POST /pets/{id}/friends/{friend_id}/reject` — 拒绝
 - ✅ `GET /pets/{id}/friends` — 列表
 
-**2.5.4 社交触发机制** ✅ 已完成（MVP 版本）
+**2.5.4 社交触发机制** ✅ 已完成（手动 + 后台自动）
 
-MVP 阶段**不做真正的自主社交**（没有 scheduler/worker 基础设施）。
-采用以下两种触发方式：
+最小闭环已包含手动触发和命令式社交回合；后台自动社交已由 APScheduler `auto_social` worker 承接。社区页加载仍只读，不触发新的社交行为，避免打开页面产生副作用。
 
-- ✅ **手动触发**：当前通过 `/social` 页面由主人手动触发
+- ✅ **手动触发**：当前通过 `/social` 或 `/community` 页面由主人手动触发
 - ✅ **命令式社交回合**：`POST /pets/{id}/social/round` — 当前后端会自动选择一个合适对象发起交互
-
-这样"社交行为"不依赖用户是否打开页面，也不需要后台 worker。
-真正的自主社交（定时 worker 轮询触发）在 Phase 7 引入 APScheduler 后实现。
+- ✅ **定时自动社交**：APScheduler 定时轮询，按好友关系、心情与每日配额选择宠物发起社交回合
 
 **预计工作量**：可跑通 5-7 天 / 可上线 8-12 天
 
@@ -554,7 +559,7 @@ class PetSocialMessage(Base):
 #### 当前进展（2026-03-30）
 - 已完成：`5.1 社区广场页面` 的当前最小闭环，当前已提供 `/community` 页面，复用现有登录态与当前宠物恢复逻辑，读取 `/pets/{id}/social/candidates` 并补充 `/a2a/pets/{id}/agent.json` 信息，展示宠物卡片、品种、性格、社交状态，并支持基础筛选/搜索
 - 已完成：`5.2 好友系统 API` 的当前最小闭环，当前已具备 `POST /pets/{id}/friends/request`、`GET /pets/{id}/friends`、`POST /pets/{id}/friends/{friend_id}/accept` 与 `DELETE /pets/{id}/friends/{friend_id}`
-- 已完成：`5.3 宠物社交触发机制` 的当前最小闭环，当前继续复用手动触发接口 `POST /pets/{id}/social/round`，社区页加载时只读取宠物列表与最近社交记录，不会在页面加载时自动触发新的社交行为；定时触发仍按路线图延后到 worker 阶段
+- 已完成：`5.3 宠物社交触发机制` 的当前最小闭环，当前继续复用手动触发接口 `POST /pets/{id}/social/round`，社区页加载时只读取宠物列表与最近社交记录，不会在页面加载时自动触发新的社交行为；后台定时触发已由 APScheduler `auto_social` worker 承接
 - 已完成：`5.4 频控与成本控制` 的当前第一步落地，当前已新增 `PetDailyQuota` 数据表，并对 `POST /pets/{id}/social/round` 加入“每日主动社交上限 5 次”的后端限制；超额时会直接返回明确提示，不继续进入社交生成链路
 
 #### 实现步骤
@@ -577,10 +582,9 @@ Phase 2.5 已实现手动触发和命令式社交回合。Phase 5 在此基础�
 
 - **手动触发**（复用 2.5）：主人点击"让宠物去打招呼"，调用 `POST /pets/{id}/social/round`
 - **页面展示**：社区页加载时只展示宠物列表和最近社交记录，**不触发新的社交行为**
-- **定时触发（v1.0 引入 worker 后启用）**：APScheduler 定时轮询，替代手动触发，实现真正的自主社交
+- **定时触发**：APScheduler 定时轮询，根据好友关系、心情与每日配额自动发起社交回合
 
-> 重要：没有 scheduler/worker 之前，不把任何社交行为叫"自主"。
-> MVP 阶段的社交是"主人手动触发的社交回合"，不是后台自动执行的。
+手动触发保留给 demo、调试和主人主动干预；后台 worker 负责无人操作时的自动社交。
 
 **5.4 频控与成本控制（必须在 5.3 之前设计完成）**
 
@@ -700,10 +704,8 @@ class PlacedFurniture(Base):
 #### 清单
 - WebSocket 实时通信（替代轮询，宠物状态变化和社区消息推送）
 - 通知系统（好友请求、宠物状态警告："你的宠物饿了！"）
-- Redis 业务接入（Session 缓存、A2A Task 缓存、状态计算缓存）
-- 引入 APScheduler / Redis worker：
-  - 状态衰减推送通知
-  - **真正的自主社交**：worker 定时轮询，根据性格和配额自动触发社交回合，替代手动触发
+- 自动社交 worker 的观测与调参（执行日志、错误告警、配额策略）
+- Redis 可选业务接入（Session 缓存、A2A Task 缓存、跨进程队列），当前不作为运行必需项
 - 管理后台
 - 数据库索引优化和查询性能调优
 - 前端首屏加载优化
@@ -715,7 +717,7 @@ class PlacedFurniture(Base):
 
 **验收标准**：
 - WebSocket 连接建立后，宠物状态变化和社交消息可实时推送到前端
-- APScheduler worker 可自动触发宠物社交回合，无需主人操作
+- APScheduler 自动社交具备可观测日志、失败保护与可调配额
 - 应用可部署到云服务器，通过 HTTPS 域名访问
 
 ---
@@ -727,12 +729,12 @@ class PlacedFurniture(Base):
 | **v0.1** | 基础聊天版本 | ✅ 已完成 | - | - |
 | **v0.1.5** | Alembic 迁移 + 多宠物切换 | ✅ 已完成 | 2-3 天 | 4-5 天 |
 | **v0.2** | 宠物生存系统 | ✅ 已完成 | 3-4 天 | 5-7 天 |
-| **v0.2.5** | 站内社交引擎 | 🚧 二次打磨中（MVP 已完成） | 5-7 天 | 8-12 天 |
-| **v0.3** | 2D 家庭场景 | 🚧 进行中（基础版已完成） | 7-10 天 | 14-18 天 |
-| **v0.4** | A2A 协议适配 | ⬜ 待开始 | 7-10 天 | 14-18 天 |
-| **v0.5** | 宠物社区 | ⬜ 待开始 | 10-14 天 | 18-24 天 |
-| **v0.6** | 家具系统 | ⬜ 待开始 | 7-10 天 | 12-16 天 |
-| **v1.0** | 完善与上线 | ⬜ 待开始 | 7-10 天 | 14-21 天 |
+| **v0.2.5** | 站内社交引擎 | ✅ 已完成（持续打磨） | 5-7 天 | 8-12 天 |
+| **v0.3** | 2D 家庭场景 | ✅ 基础版已完成 | 7-10 天 | 14-18 天 |
+| **v0.4** | A2A 协议适配 | ✅ 最小闭环已完成 | 7-10 天 | 14-18 天 |
+| **v0.5** | 宠物社区 | ✅ 最小闭环已完成 | 10-14 天 | 18-24 天 |
+| **v0.6** | 家具系统 | ✅ 最小闭环已完成 | 7-10 天 | 12-16 天 |
+| **v1.0** | 完善与上线 | 🚧 进行中（部署、观测、实时化） | 7-10 天 | 14-21 天 |
 
 ---
 
@@ -760,7 +762,7 @@ v0.5 社区扩展
 v0.6 家具系统
   │
   ▼
-v1.0 完善上线      （引入 worker，实现真正自主社交）
+v1.0 完善上线      （部署、观测、实时推送与自动社交调优）
 ```
 
 严格串行推进。在当前 API 路由边界收口完成之前，不建议并行推进多个阶段。
@@ -771,17 +773,17 @@ v1.0 完善上线      （引入 worker，实现真正自主社交）
 ## 技术栈演进
 
 ```
-v0.1（当前）                    v0.5+（目标）
+v0.6+（当前）                   v1.0（目标）
 ──────────────                 ──────────────
 Next.js 16                     Next.js 16
 FastAPI                        FastAPI
 SQLAlchemy + create_all()  →   SQLAlchemy + Alembic
 PostgreSQL                     PostgreSQL
-Redis（容器已启动，未接入） →   Redis（缓存 + Task 队列）
-                               Phaser.js（2D 场景渲染）
+Redis（预留，不默认启动）  →    Redis（可选缓存 + Task 队列）
+Phaser.js（2D 场景渲染）        Phaser.js（2D 场景渲染）
                                WebSocket（实时通信）
-                               APScheduler（定时任务，v1.0 引入）
-                               A2A Protocol（Agent 间通信）
+APScheduler（定时任务）         APScheduler（观测与调参）
+A2A Protocol（Agent 间通信）    A2A Protocol（外部生态打磨）
 ```
 
 ---

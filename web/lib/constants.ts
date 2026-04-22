@@ -1,5 +1,20 @@
+const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
+
+const readBrowserApiBaseUrlFallback = () => {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  return LOCAL_HOSTS.has(window.location.hostname)
+    ? "http://localhost:8000"
+    : "/api/backend";
+};
+
 export const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || "http://localhost:8000";
+  process.env.NEXT_PUBLIC_API_BASE_URL?.trim() ||
+  readBrowserApiBaseUrlFallback() ||
+  process.env.API_BASE_URL?.trim() ||
+  "http://127.0.0.1:8000";
 
 export const LOGIN_REQUIRED_MESSAGE = "请先登录后再使用这个页面。";
 export const RESTORE_PET_FAILURE_MESSAGE = "读取宠物列表失败了，请稍后再试。";

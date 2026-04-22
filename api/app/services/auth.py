@@ -2,12 +2,13 @@ import hashlib
 import hmac
 import json
 import logging
+import os
 import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import httpx
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Cookie, Depends, Header, HTTPException, Response, status
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -19,6 +20,10 @@ from app.schemas import UserResponse
 PASSWORD_HASH_ITERATIONS = 200_000
 AUTH_TOKEN_PREFIX = "Bearer "
 AUTH_TOKEN_LENGTH = 32
+AUTH_COOKIE_NAME = "pet-agent-social-auth"
+AUTH_COOKIE_SECURE_ENV = "AUTH_COOKIE_SECURE"
+AUTH_SESSION_TTL = timedelta(days=14)
+AUTH_SESSION_ROTATION_INTERVAL = timedelta(minutes=30)
 SECONDME_USER_INFO_PATH = "/api/secondme/user/info"
 SECONDME_REFRESH_GRANT_TYPE = "refresh_token"
 SECONDME_REFRESH_BUFFER = timedelta(minutes=5)
@@ -119,6 +124,58 @@ def verify_password(password: str, stored_password_hash: str) -> bool:
 
 def build_auth_token() -> str:
     return secrets.token_urlsafe(AUTH_TOKEN_LENGTH)
+
+
+def build_auth_session_expires_at(now: datetime | None = None) -> datetime:
+    return (now or datetime.now(timezone.utc)) + AUTH_SESSION_TTL
+
+
+def build_auth_session(user_id: int) -> AuthSession:
+    now = datetime.now(timezone.utc)
+    return AuthSession(
+        user_id=user_id,
+        token=build_auth_token(),
+        expires_at=build_auth_session_expires_at(now),
+        last_used_at=now,
+    )
+
+
+def should_use_secure_auth_cookie() -> bool:
+    explicit_value = os.getenv(AUTH_COOKIE_SECURE_ENV, "").strip().lower()
+
+    if explicit_value:
+        return explicit_value in {"1", "true", "yes", "on"}
+
+    return get_settings().environment.lower() == "production"
+
+
+def set_auth_cookie(response: Response, token: str, expires_at: datetime) -> None:
+    normalized_expires_at = normalize_datetime_to_utc(expires_at)
+    now = datetime.now(timezone.utc)
+    max_age = max(
+        0,
+        int(((normalized_expires_at or now) - now).total_seconds()),
+    )
+    response.set_cookie(
+        key=AUTH_COOKIE_NAME,
+        value=token,
+        max_age=max_age,
+        expires=normalized_expires_at,
+        path="/",
+        httponly=True,
+        secure=should_use_secure_auth_cookie(),
+        samesite="lax",
+    )
+
+
+def clear_auth_cookie(response: Response) -> None:
+    response.delete_cookie(
+        key=AUTH_COOKIE_NAME,
+        path="/",
+        secure=should_use_secure_auth_cookie(),
+        httponly=True,
+        samesite="lax",
+    )
 
 
 def read_first_profile_value(
@@ -405,12 +462,9 @@ def fetch_secondme_user_profile(
     return profile
 
 
-def read_bearer_token(authorization: str | None) -> str:
+def read_bearer_token(authorization: str | None) -> str | None:
     if not authorization:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Please log in before using this endpoint.",
-        )
+        return None
 
     if not authorization.startswith(AUTH_TOKEN_PREFIX):
         raise HTTPException(
@@ -428,32 +482,100 @@ def read_bearer_token(authorization: str | None) -> str:
 
     return token
 
+def read_auth_token(
+    authorization: str | None, auth_cookie: str | None
+) -> str:
+    bearer_token = read_bearer_token(authorization)
 
-def get_auth_session_or_401(db: Session, token: str) -> AuthSession:
+    if bearer_token:
+        return bearer_token
+
+    cookie_token = (auth_cookie or "").strip()
+
+    if cookie_token:
+        return cookie_token
+
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Please log in before using this endpoint.",
+    )
+
+
+def get_auth_session_or_401(
+    db: Session, token: str, response: Response | None = None
+) -> AuthSession:
     auth_session = db.query(AuthSession).filter(AuthSession.token == token).first()
 
     if auth_session is None:
+        if response is not None:
+            clear_auth_cookie(response)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Current login session has expired. Please log in again.",
         )
 
+    now = datetime.now(timezone.utc)
+    expires_at = normalize_datetime_to_utc(auth_session.expires_at)
+
+    if expires_at is None or expires_at <= now:
+        try:
+            db.delete(auth_session)
+            db.commit()
+        except SQLAlchemyError:
+            db.rollback()
+            logger.exception("Failed to delete expired auth session %s", auth_session.id)
+
+        if response is not None:
+            clear_auth_cookie(response)
+
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Current login session has expired. Please log in again.",
+        )
+
+    last_used_at = normalize_datetime_to_utc(auth_session.last_used_at)
+    should_rotate = (
+        last_used_at is None
+        or last_used_at <= now - AUTH_SESSION_ROTATION_INTERVAL
+    )
+
+    auth_session.last_used_at = now
+    auth_session.expires_at = build_auth_session_expires_at(now)
+
+    if should_rotate:
+        auth_session.token = build_auth_token()
+
+    try:
+        db.commit()
+        db.refresh(auth_session)
+    except SQLAlchemyError:
+        db.rollback()
+        logger.exception("Failed to refresh auth session %s", auth_session.id)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Current login session could not be refreshed.",
+        )
+
+    if response is not None:
+        set_auth_cookie(response, auth_session.token, auth_session.expires_at)
+
     return auth_session
 
 
 def get_current_auth_session(
+    response: Response,
     authorization: str | None = Header(default=None),
+    auth_cookie: str | None = Cookie(default=None, alias=AUTH_COOKIE_NAME),
     db: Session = Depends(get_db),
 ) -> AuthSession:
-    token = read_bearer_token(authorization)
-    return get_auth_session_or_401(db, token)
+    token = read_auth_token(authorization, auth_cookie)
+    return get_auth_session_or_401(db, token, response)
 
 
 def get_current_user(
-    authorization: str | None = Header(default=None),
+    auth_session: AuthSession = Depends(get_current_auth_session),
     db: Session = Depends(get_db),
 ) -> User:
-    auth_session = get_current_auth_session(authorization, db)
     user = db.get(User, auth_session.user_id)
 
     if user is None:

@@ -200,6 +200,7 @@ export const fetchLatestPetForCurrentUser = async (
 ): Promise<PetRecoveryResult> => {
   const response = await fetch(`${API_BASE_URL}/pets`, {
     cache: "no-store",
+    credentials: "include",
     headers: buildAuthHeaders(token),
   });
 

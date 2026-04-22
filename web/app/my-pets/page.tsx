@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { AuthSessionNotice } from "../../lib/AuthSessionNotice";
 import { buildAuthHeaders, clearStoredAuth, readStoredAuthToken } from "../../lib/auth";
 import { API_BASE_URL, LOGIN_REQUIRED_MESSAGE } from "../../lib/constants";
 import {
@@ -12,6 +11,7 @@ import {
   readStoredPetId,
   type ApiPet,
 } from "../../lib/pet";
+import { PetAvatarImage } from "../../lib/PetAvatarImage";
 
 export default function MyPetsPage() {
   const [pets, setPets] = useState<ApiPet[]>([]);
@@ -24,6 +24,7 @@ export default function MyPetsPage() {
   const loadPets = async (token: string) => {
     const res = await fetch(`${API_BASE_URL}/pets`, {
       cache: "no-store",
+      credentials: "include",
       headers: buildAuthHeaders(token),
     });
     if (res.status === 401) {
@@ -68,6 +69,7 @@ export default function MyPetsPage() {
     try {
       const res = await fetch(`${API_BASE_URL}/pets/${pet.id}`, {
         method: "DELETE",
+        credentials: "include",
         headers: buildAuthHeaders(authToken),
       });
       if (!res.ok && res.status !== 204) {
@@ -89,8 +91,8 @@ export default function MyPetsPage() {
   };
 
   return (
-    <main className="min-h-screen bg-white px-6 py-12 text-gray-900">
-      <div className="mx-auto max-w-3xl">
+    <main className="min-h-dvh bg-white px-4 py-6 text-gray-900 sm:px-6 sm:py-8 lg:px-8 lg:py-10">
+      <div className="mx-auto w-full max-w-3xl">
         <div className="mb-8 flex flex-wrap items-center gap-4 text-sm text-gray-500">
           <Link href="/" className="transition hover:text-gray-800">返回首页</Link>
           <Link href="/home" className="transition hover:text-gray-800">家庭场景</Link>
@@ -101,8 +103,6 @@ export default function MyPetsPage() {
           <h1 className="mt-1 text-3xl font-bold">我的所有宠物</h1>
           <p className="mt-2 text-gray-500">管理你的宠物，切换当前激活宠物，或创建新宠物。</p>
         </div>
-
-        <AuthSessionNotice authToken={authToken} className="mb-8" />
 
         {feedback && (
           <div className={`mb-6 rounded-2xl px-5 py-4 text-sm ${
@@ -148,7 +148,13 @@ export default function MyPetsPage() {
                     }`}
                   >
                     <div className="flex items-start justify-between gap-4">
-                      <div>
+                      <div className="flex min-w-0 items-start gap-4">
+                        <PetAvatarImage
+                          pet={pet}
+                          className="h-16 w-16 shrink-0 rounded-2xl bg-white shadow-sm ring-1 ring-black/5"
+                          size={160}
+                        />
+                        <div className="min-w-0">
                         <div className="flex items-center gap-2">
                           <h2 className="text-lg font-bold">{pet.petName}</h2>
                           {activePetId === pet.id && (
@@ -159,6 +165,7 @@ export default function MyPetsPage() {
                           {pet.species} · {pet.color} · {pet.size}
                         </p>
                         <p className="mt-1 text-xs text-gray-400 line-clamp-2">{pet.personality}</p>
+                        </div>
                       </div>
                       <div className="flex shrink-0 gap-2">
                         {activePetId !== pet.id && (

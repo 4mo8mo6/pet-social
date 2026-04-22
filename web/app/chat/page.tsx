@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
-import { AuthSessionNotice } from "../../lib/AuthSessionNotice";
 import {
   buildAuthHeaders,
   clearStoredAuth,
@@ -173,10 +172,12 @@ export default function ChatPage() {
         const [petResponse, messagesResponse] = await Promise.all([
           fetch(`${API_BASE_URL}/pets/${activePetId}`, {
             cache: "no-store",
+            credentials: "include",
             headers: buildAuthHeaders(storedAuthToken),
           }),
           fetch(`${API_BASE_URL}/pets/${activePetId}/messages`, {
             cache: "no-store",
+            credentials: "include",
             headers: buildAuthHeaders(storedAuthToken),
           }),
         ]);
@@ -213,10 +214,12 @@ export default function ChatPage() {
             const [restoredPetResponse, restoredMessagesResponse] = await Promise.all([
               fetch(`${API_BASE_URL}/pets/${activePetId}`, {
                 cache: "no-store",
+                credentials: "include",
                 headers: buildAuthHeaders(storedAuthToken),
               }),
               fetch(`${API_BASE_URL}/pets/${activePetId}/messages`, {
                 cache: "no-store",
+                credentials: "include",
                 headers: buildAuthHeaders(storedAuthToken),
               }),
             ]);
@@ -368,6 +371,7 @@ export default function ChatPage() {
     try {
       const response = await fetch(`${API_BASE_URL}/pets/${petId}/chat`, {
         method: "POST",
+        credentials: "include",
         signal: controller.signal,
         headers: buildAuthHeaders(authToken, true),
         body: JSON.stringify({
@@ -457,6 +461,7 @@ export default function ChatPage() {
     try {
       const response = await fetch(`${API_BASE_URL}/pets/${petId}/messages`, {
         method: "DELETE",
+        credentials: "include",
         headers: buildAuthHeaders(authToken),
       });
 
@@ -556,8 +561,8 @@ export default function ChatPage() {
     : LOGIN_REQUIRED_MESSAGE;
 
   return (
-    <main className="min-h-screen bg-white px-6 py-12 text-gray-900">
-      <div className="mx-auto max-w-4xl">
+    <main className="min-h-dvh bg-white px-4 py-6 text-gray-900 sm:px-6 sm:py-8 lg:px-8 lg:py-10">
+      <div className="mx-auto w-full max-w-4xl">
         <AppHeaderNav />
 
         <div className="mb-8">
@@ -575,8 +580,6 @@ export default function ChatPage() {
             )}
           </div>
         </div>
-
-        <AuthSessionNotice authToken={authToken} className="mb-8" />
 
         {isLoadingChat ? (
           <section className={`${ui.cardSoft} p-6 shadow-sm`}>
@@ -681,7 +684,7 @@ export default function ChatPage() {
 
                 <div
                   ref={messagesContainerRef}
-                  className="h-[360px] overflow-y-auto rounded-2xl bg-gray-50 p-4 sm:h-[420px]"
+                  className="h-[360px] max-h-[52dvh] min-h-[220px] overflow-y-auto rounded-2xl bg-gray-50 p-4 sm:h-[420px] sm:max-h-[56dvh]"
                 >
                   {messages.length === 0 ? (
                     <div className="flex h-full items-center justify-center rounded-2xl border border-dashed border-gray-200 bg-white/70 px-6 text-center text-sm leading-6 text-gray-500">

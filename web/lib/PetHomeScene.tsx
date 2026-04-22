@@ -5,7 +5,6 @@ import type { MutableRefObject } from "react";
 import type * as PhaserType from "phaser";
 
 import {
-  getHomePetSpriteSpec,
   getHomeSceneBehavior,
   getRoomConfig,
   getRoomIndex,
@@ -19,6 +18,11 @@ import {
   type TilePoint,
 } from "./home-scene";
 import type { PlacedFurnitureResponse } from "./furniture";
+import {
+  buildPetAvatarBase64DataUri,
+  buildPetAvatarSpec,
+  type PetAvatarInput,
+} from "./pet-avatar";
 import type { PetStatus } from "./PetStatusPanel";
 
 export type SceneAction = "pet" | HomeSceneObjectAction;
@@ -27,6 +31,10 @@ export type PetSceneData = {
   id: number;
   petName: string;
   petSpecies: string;
+  petColor?: string;
+  petSize?: string;
+  petPersonality?: string;
+  petSpecialTraits?: string;
   petStatus: PetStatus | null;
   recentSocialEmotion?: HomeSocialEmotion | null;
 };
@@ -86,7 +94,7 @@ type FurnitureNode = {
 
 type PetSprite = {
   container: PhaserType.GameObjects.Container;
-  tintParts: PhaserType.GameObjects.Shape[];
+  visual: PhaserType.GameObjects.Image;
   label: PhaserType.GameObjects.Text;
   mouth: PhaserType.GameObjects.Text;
   slotIndex: number;
@@ -156,21 +164,23 @@ function toWorld(tileX: number, tileY: number) {
   };
 }
 
-function getPetTint(status: PetStatus | null) {
-  if (!status) {
-    return 0xfbbf24;
-  }
+function buildScenePetAvatarSpec(petData: PetSceneData) {
+  return buildPetAvatarSpec(buildScenePetAvatarInput(petData));
+}
 
-  switch (status.mood) {
-    case "happy":
-      return 0x34d399;
-    case "sad":
-      return 0x60a5fa;
-    case "uncomfortable":
-      return 0xf87171;
-    default:
-      return 0xfbbf24;
-  }
+function buildScenePetAvatarInput(petData: PetSceneData): PetAvatarInput {
+  return {
+    petName: petData.petName,
+    species: petData.petSpecies,
+    color: petData.petColor,
+    size: petData.petSize,
+    personality: petData.petPersonality,
+    specialTraits: petData.petSpecialTraits,
+  };
+}
+
+function getScenePetAvatarTextureKey(petData: PetSceneData) {
+  return `home-pet-avatar-${petData.id}-${buildScenePetAvatarSpec(petData).seed}`;
 }
 
 function getRoomPetPoint(roomId: HomeRoomId, slotIndex: number) {
@@ -533,6 +543,29 @@ function generateTextureIfMissing(
   draw(graphics);
   graphics.generateTexture(key, width, height);
   graphics.destroy();
+}
+
+function queuePetAvatarTextures(scene: PhaserType.Scene, pets: PetSceneData[]) {
+  let queuedCount = 0;
+
+  pets.forEach((petData) => {
+    const textureKey = getScenePetAvatarTextureKey(petData);
+
+    if (scene.textures.exists(textureKey)) {
+      return;
+    }
+
+    scene.load.image(
+      textureKey,
+      buildPetAvatarBase64DataUri(buildScenePetAvatarInput(petData), {
+        size: 256,
+        transparent: true,
+      })
+    );
+    queuedCount += 1;
+  });
+
+  return queuedCount;
 }
 
 function ensureHomeSceneTextures(scene: PhaserType.Scene) {
@@ -1277,7 +1310,7 @@ function createHomeScene(
     clearActiveText(sprite);
     sprite.container.setScale(1);
     sprite.container.setAngle(0);
-    sprite.mouth.setText("-");
+    sprite.mouth.setText("");
     updatePetLabelPosition(sprite);
     sprite.currentTile = {
       tileX: snapWorldToTile(sprite.container.x),
@@ -1503,7 +1536,7 @@ function createHomeScene(
           onUpdate: () => updatePetLabelPosition(sprite),
           onComplete: () => {
             sprite.container.setAngle(0);
-            sprite.mouth.setText("-");
+            sprite.mouth.setText("");
             finishPetAnimation(sprite, petData);
           },
         });
@@ -1532,7 +1565,7 @@ function createHomeScene(
           ease: "Sine.easeInOut",
           onUpdate: () => updatePetLabelPosition(sprite),
           onComplete: () => {
-            sprite.mouth.setText("-");
+            sprite.mouth.setText("");
             finishPetAnimation(sprite, petData);
           },
         });
@@ -1549,7 +1582,7 @@ function createHomeScene(
           onUpdate: () => updatePetLabelPosition(sprite),
           onComplete: () => {
             sprite.container.setAngle(0);
-            sprite.mouth.setText("-");
+            sprite.mouth.setText("");
             finishPetAnimation(sprite, petData);
           },
         });
@@ -1609,7 +1642,7 @@ function createHomeScene(
           onUpdate: () => updatePetLabelPosition(sprite),
           onComplete: () => {
             sprite.container.setAngle(0);
-            sprite.mouth.setText("-");
+            sprite.mouth.setText("");
             finishPetAnimation(sprite, petData);
           },
         });
@@ -1684,7 +1717,10 @@ function createHomeScene(
         continue;
       }
 
-      sprite.tintParts.forEach((part) => part.setFillStyle(getPetTint(petData.petStatus)));
+      const textureKey = getScenePetAvatarTextureKey(petData);
+      if (scene.textures.exists(textureKey) && sprite.visual.texture.key !== textureKey) {
+        sprite.visual.setTexture(textureKey);
+      }
       sprite.label.setText(petData.petName);
     }
 
@@ -1975,93 +2011,54 @@ function createHomeScene(
   };
 
   const createPetSprite = (petData: PetSceneData, slotIndex: number) => {
-    const spriteSpec = getHomePetSpriteSpec(petData.petSpecies);
+    const avatarSpec = buildScenePetAvatarSpec(petData);
+    const avatarSize = 62 * avatarSpec.sizeScale;
+    const hitSize = Math.max(avatarSize, 58);
     const startPoint = toWorld(
       getRoomPetPoint(activeRoomId, slotIndex).tileX,
       getRoomPetPoint(activeRoomId, slotIndex).tileY
     );
 
-    const shadow = scene.add.ellipse(0, 20, 34, 12, 0x7c5b2d, 0.18);
-    const body = scene.add.ellipse(
+    const shadow = scene.add.ellipse(0, 20, avatarSize * 0.72, 12, 0x7c5b2d, 0.18);
+    const avatarImage = scene.add.image(
       0,
-      0,
-      spriteSpec.bodyWidth,
-      spriteSpec.bodyHeight,
-      getPetTint(petData.petStatus)
+      -10,
+      getScenePetAvatarTextureKey(petData)
     );
+    avatarImage.setDisplaySize(avatarSize, avatarSize);
 
-    const leftEar =
-      spriteSpec.earStyle === "floppy"
-        ? scene.add.ellipse(-14, -10, 12, 22, 0x92400e)
-        : spriteSpec.earStyle === "long"
-          ? scene.add.ellipse(-10, -22, 10, 28, 0xf8fafc)
-          : scene.add.triangle(-10, -16, 0, 0, 8, -16, 16, 0, 0xeab308);
-    const rightEar =
-      spriteSpec.earStyle === "floppy"
-        ? scene.add.ellipse(14, -10, 12, 22, 0x92400e)
-        : spriteSpec.earStyle === "long"
-          ? scene.add.ellipse(10, -22, 10, 28, 0xf8fafc)
-          : scene.add.triangle(10, -16, 0, 0, 8, -16, 16, 0, 0xeab308);
-
-    const tail =
-      spriteSpec.tailStyle === "curled"
-        ? scene.add.ellipse(20, 4, 12, 24, 0x92400e)
-        : spriteSpec.tailStyle === "cotton"
-          ? scene.add.circle(18, 8, 7, 0xffffff)
-          : spriteSpec.tailStyle === "bushy"
-            ? scene.add.ellipse(22, 4, 16, 28, 0xf59e0b)
-            : scene.add.ellipse(18, 10, 10, 20, 0xeab308);
-
-    const face = scene.add.text(0, -1, spriteSpec.face, {
-      color: "#1f2937",
+    const mouth = scene.add.text(0, 16, "", {
+      color: avatarSpec.darkColor,
       fontSize: "12px",
-    });
-    face.setOrigin(0.5);
-
-    const leftEye = scene.add.circle(-7, -4, 3, 0x1f2937);
-    const rightEye = scene.add.circle(7, -4, 3, 0x1f2937);
-    const leftPupil = scene.add.circle(-6, -5, 1.5, 0xffffff);
-    const rightPupil = scene.add.circle(8, -5, 1.5, 0xffffff);
-    const mouth = scene.add.text(0, 8, "-", {
-      color: "#1f2937",
-      fontSize: "10px",
+      fontStyle: "bold",
     });
     mouth.setOrigin(0.5);
-    const blushLeft = scene.add.ellipse(-11, 2, 8, 5, 0xff9999, 0.35);
-    const blushRight = scene.add.ellipse(11, 2, 8, 5, 0xff9999, 0.35);
 
-    const tintParts: PhaserType.GameObjects.Shape[] = [body, leftEar, rightEar, tail];
-    const petContainer = scene.add.container(startPoint.x, startPoint.y, [
-      shadow,
-      tail,
-      body,
-      leftEar,
-      rightEar,
-      face,
-      leftEye,
-      rightEye,
-      leftPupil,
-      rightPupil,
-      mouth,
-      blushLeft,
-      blushRight,
-    ]);
+    const petParts = [shadow, avatarImage, mouth];
+    const petContainer = scene.add.container(startPoint.x, startPoint.y);
+    petParts.forEach((part) => {
+      if (part) {
+        petContainer.add(part);
+      }
+    });
     petContainer.setDepth(7);
-    petContainer.setSize(spriteSpec.bodyWidth + 20, spriteSpec.bodyHeight + 20);
+    const hitWidth = hitSize;
+    const hitHeight = hitSize;
+    petContainer.setSize(hitWidth, hitHeight);
     petContainer.setInteractive(
       new PhaserRuntime.Geom.Rectangle(
-        -(spriteSpec.bodyWidth + 20) / 2,
-        -(spriteSpec.bodyHeight + 20) / 2,
-        spriteSpec.bodyWidth + 20,
-        spriteSpec.bodyHeight + 20
+        -hitWidth / 2,
+        -hitHeight / 2,
+        hitWidth,
+        hitHeight
       ),
       PhaserRuntime.Geom.Rectangle.Contains
     );
     petContainer.on("pointerover", () => {
-      tintParts.forEach((part) => part.setAlpha(0.85));
+      avatarImage.setAlpha(0.85);
     });
     petContainer.on("pointerout", () => {
-      tintParts.forEach((part) => part.setAlpha(1));
+      avatarImage.setAlpha(1);
     });
     petContainer.on("pointerdown", () => {
       refs.actionRef.current("pet", petData.id);
@@ -2081,7 +2078,7 @@ function createHomeScene(
     const startTile = getRoomPetPoint(activeRoomId, slotIndex);
     petSprites.set(petData.id, {
       container: petContainer,
-      tintParts,
+      visual: avatarImage,
       label: petLabel,
       mouth,
       slotIndex,
@@ -2234,29 +2231,39 @@ function createHomeScene(
       roomLayers.set(roomId, createRoomLayer(scene, getRoomConfig(roomId), activeRoomId));
     });
 
-    syncFurniture();
-    createPets();
-    refreshStatus();
+    const finishSceneCreate = () => {
+      syncFurniture();
+      createPets();
+      refreshStatus();
 
-    scene.time.addEvent({
-      delay: 2300,
-      loop: true,
-      callback: () => {
-        petSprites.forEach((_, petId) => {
-          movePetSprite(petId);
-        });
-      },
-    });
+      scene.time.addEvent({
+        delay: 2300,
+        loop: true,
+        callback: () => {
+          petSprites.forEach((_, petId) => {
+            movePetSprite(petId);
+          });
+        },
+      });
 
-    refs.apiRef.current = {
-      refresh: refreshStatus,
-      setRoom,
-      syncFurniture,
+      refs.apiRef.current = {
+        refresh: refreshStatus,
+        setRoom,
+        syncFurniture,
+      };
+
+      scene.events.once("shutdown", () => {
+        refs.apiRef.current = null;
+      });
     };
 
-    scene.events.once("shutdown", () => {
-      refs.apiRef.current = null;
-    });
+    if (queuePetAvatarTextures(scene, refs.petsRef.current) > 0) {
+      scene.load.once("complete", finishSceneCreate);
+      scene.load.start();
+      return;
+    }
+
+    finishSceneCreate();
   };
 
   return scene;
@@ -2288,6 +2295,10 @@ export function PetHomeScene({
   latestFurnitureRef.current = placedFurniture;
   latestFurnitureChangeRef.current = onPlacedFurnitureChange;
   latestEditErrorRef.current = onEditError;
+
+  const petAvatarSignature = pets
+    .map((pet) => `${pet.id}:${buildScenePetAvatarSpec(pet).seed}`)
+    .join("|");
 
   useEffect(() => {
     let destroyed = false;
@@ -2335,7 +2346,7 @@ export function PetHomeScene({
         game.destroy(true);
       }
     };
-  }, [pets.length]);
+  }, [petAvatarSignature]);
 
   useEffect(() => {
     sceneApiRef.current?.refresh();

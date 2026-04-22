@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 const SUPPORT_TOPICS = [
   {
     title: "Sign-in and account access",
-    body: "The current build supports SecondMe sign-in only. If sign-in fails, verify that your SecondMe authorization completed and retry from the login page.",
+    body: "The current build supports local email/password access and SecondMe sign-in. If access fails, retry the matching login flow and check the visible error message.",
   },
   {
     title: "Pet creation and switching",
@@ -32,7 +32,7 @@ const FAQ_ITEMS = [
   {
     question: "Can I sign in with email and password?",
     answer:
-      "No. Local email registration and local password login have been removed from the current preview. SecondMe is the only supported identity provider.",
+      "Yes. The preview supports local email/password registration and login alongside SecondMe sign-in.",
   },
   {
     question: "Can I delete a pet myself?",
@@ -58,8 +58,9 @@ export default function SupportPage() {
         </h1>
         <p className="mt-6 max-w-3xl text-base leading-8 text-slate-600 sm:text-lg">
           This page documents the current support scope for Pet Agent Social as
-          of April 1, 2026. It focuses on access, pet management, chat, and
-          social interactions in the web app connected to SecondMe sign-in.
+          of April 21, 2026. It focuses on access, pet management, chat, and
+          social interactions in the web app connected to local and SecondMe
+          sign-in.
         </p>
       </section>
 
@@ -92,8 +93,8 @@ export default function SupportPage() {
             </div>
             <div className="rounded-3xl bg-white px-5 py-4 shadow-sm">
               <strong className="font-semibold text-slate-950">Step 2.</strong>{" "}
-              If the issue is access-related, sign out and retry the SecondMe
-              login flow before reporting it.
+              If the issue is access-related, sign out and retry the same
+              email/password or SecondMe login flow before reporting it.
             </div>
             <div className="rounded-3xl bg-white px-5 py-4 shadow-sm">
               <strong className="font-semibold text-slate-950">Step 3.</strong>{" "}
@@ -136,8 +137,9 @@ export default function SupportPage() {
               Supported today
             </h2>
             <p className="mt-3 text-sm leading-7 text-slate-600">
-              SecondMe login, pet creation and editing, chat, status panels,
-              social rounds, and home scene interactions.
+              Email/password registration and login, SecondMe login, pet
+              creation and editing, chat, status panels, social rounds, and home
+              scene interactions.
             </p>
           </div>
           <div className="rounded-3xl bg-white px-5 py-5 shadow-sm">
@@ -155,7 +157,8 @@ export default function SupportPage() {
             </h2>
             <p className="mt-3 text-sm leading-7 text-slate-600">
               Include exact repro steps, current page, current pet, and whether
-              the issue started during SecondMe authorization or after sign-in.
+              the issue started during local login, SecondMe authorization, or
+              after sign-in.
             </p>
           </div>
         </div>

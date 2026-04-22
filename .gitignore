@@ -13,5 +13,9 @@ web/.env.local
 # Local runtime and test artifacts.
 .secondme/
 .venv-backend-test/
+api/.venv/
+api/*.log
+web/*.log
+tmp-*.png
 web/next-dev.log
 web/next-dev-webpack.log

@@ -1,6 +1,6 @@
 import secrets
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -17,16 +17,18 @@ from app.schemas import (
     AuthSecondMeCallbackRequest,
 )
 from app.services.auth import (
-    build_auth_token,
+    build_auth_session,
     build_secondme_placeholder_email,
     build_secondme_token_expires_at,
     build_user_response,
+    clear_auth_cookie,
     extract_secondme_email,
     extract_secondme_user_id,
     fetch_secondme_user_profile,
     get_current_auth_session,
     get_current_user,
     hash_password,
+    set_auth_cookie,
     validate_email,
     verify_password,
 )
@@ -96,7 +98,9 @@ def register_user(
 
 @router.post("/login", response_model=AuthLoginResponse)
 def login_user(
-    payload: AuthLoginRequest, db: Session = Depends(get_db)
+    payload: AuthLoginRequest,
+    response: Response,
+    db: Session = Depends(get_db),
 ) -> AuthLoginResponse:
     email = validate_email(payload.email)
     user = db.query(User).filter(User.email == email).first()
@@ -107,10 +111,7 @@ def login_user(
             detail="Email or password is incorrect.",
         )
 
-    auth_session = AuthSession(
-        user_id=user.id,
-        token=build_auth_token(),
-    )
+    auth_session = build_auth_session(user.id)
 
     try:
         db.add(auth_session)
@@ -123,6 +124,8 @@ def login_user(
             detail="Login failed. Please try again later.",
         ) from error
 
+    set_auth_cookie(response, auth_session.token, auth_session.expires_at)
+
     return AuthLoginResponse(
         message="Login successful.",
         token=auth_session.token,
@@ -132,7 +135,9 @@ def login_user(
 
 @router.post("/secondme/callback", response_model=AuthLoginResponse)
 def login_user_with_secondme(
-    payload: AuthSecondMeCallbackRequest, db: Session = Depends(get_db)
+    payload: AuthSecondMeCallbackRequest,
+    response: Response,
+    db: Session = Depends(get_db),
 ) -> AuthLoginResponse:
     settings = get_settings()
     secondme_profile = fetch_secondme_user_profile(
@@ -192,10 +197,7 @@ def login_user_with_secondme(
         if created_new_user:
             grant_default_inventory(db, user.id)
 
-        auth_session = AuthSession(
-            user_id=user.id,
-            token=build_auth_token(),
-        )
+        auth_session = build_auth_session(user.id)
         db.add(auth_session)
         db.commit()
         db.refresh(auth_session)
@@ -207,6 +209,8 @@ def login_user_with_secondme(
             detail="SecondMe login could not be completed.",
         ) from error
 
+    set_auth_cookie(response, auth_session.token, auth_session.expires_at)
+
     return AuthLoginResponse(
         message="SecondMe login successful.",
         token=auth_session.token,
@@ -216,6 +220,7 @@ def login_user_with_secondme(
 
 @router.post("/logout", response_model=AuthLogoutResponse)
 def logout_user(
+    response: Response,
     auth_session: AuthSession = Depends(get_current_auth_session),
     db: Session = Depends(get_db),
 ) -> AuthLogoutResponse:
@@ -228,6 +233,8 @@ def logout_user(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Logout failed. Please try again later.",
         ) from error
+
+    clear_auth_cookie(response)
 
     return AuthLogoutResponse(message="Logged out.")
 

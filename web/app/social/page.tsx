@@ -2,13 +2,13 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
-import { AuthSessionNotice } from "../../lib/AuthSessionNotice";
 import {
   SocialConversationPanel,
   SocialFriendshipsPanel,
   SocialTargetsPanel,
   SocialTaskHistoryPanel,
 } from "../../lib/SocialDashboardSections";
+import { EmptyState, SkeletonBlock } from "../../lib/feedback";
 import {
   buildAuthHeaders,
   clearStoredAuth,
@@ -47,6 +47,7 @@ export default function SocialPage() {
   const [authToken, setAuthToken] = useState<string | null>(null);
   const [petId, setPetId] = useState<number | null>(null);
   const [petName, setPetName] = useState("");
+  const [petSpecies, setPetSpecies] = useState("");
   const [candidates, setCandidates] = useState<SocialCandidate[]>([]);
   const [friendships, setFriendships] = useState<Friendship[]>([]);
   const [tasks, setTasks] = useState<SocialTaskHistoryItem[]>([]);
@@ -67,6 +68,7 @@ export default function SocialPage() {
     setAuthToken(null);
     setPetId(null);
     setPetName("");
+    setPetSpecies("");
     setCandidates([]);
     setFriendships([]);
     setTasks([]);
@@ -83,7 +85,11 @@ export default function SocialPage() {
   ) => {
     const response = await fetch(
       `${API_BASE_URL}/pets/${activePetId}/social/messages/${targetPetId}`,
-      { cache: "no-store", headers: buildAuthHeaders(token) }
+      {
+        cache: "no-store",
+        credentials: "include",
+        headers: buildAuthHeaders(token),
+      }
     );
 
     if (response.status === 401) {
@@ -113,18 +119,22 @@ export default function SocialPage() {
       await Promise.all([
         fetch(`${API_BASE_URL}/pets/${activePetId}`, {
           cache: "no-store",
+          credentials: "include",
           headers: buildAuthHeaders(token),
         }),
         fetch(`${API_BASE_URL}/pets/${activePetId}/social/candidates`, {
           cache: "no-store",
+          credentials: "include",
           headers: buildAuthHeaders(token),
         }),
         fetch(`${API_BASE_URL}/pets/${activePetId}/friends`, {
           cache: "no-store",
+          credentials: "include",
           headers: buildAuthHeaders(token),
         }),
         fetch(`${API_BASE_URL}/pets/${activePetId}/social/tasks`, {
           cache: "no-store",
+          credentials: "include",
           headers: buildAuthHeaders(token),
         }),
       ]);
@@ -176,6 +186,7 @@ export default function SocialPage() {
 
     setPetId(petData.pet.id);
     setPetName(petData.pet.petName);
+    setPetSpecies(petData.pet.species);
     setCandidates(sortedCandidates);
     setFriendships(friendsData.friends);
     setTasks(tasksData.tasks);
@@ -282,7 +293,7 @@ export default function SocialPage() {
       return;
     }
 
-    const response = await fetch(url, init);
+    const response = await fetch(url, { ...init, credentials: "include" });
     if (response.status === 401) {
       handleUnauthorized();
       return;
@@ -318,6 +329,7 @@ export default function SocialPage() {
     await runAction(async () => {
       await postAndRefresh(`${API_BASE_URL}/pets/${petId}/social/round`, {
         method: "POST",
+        credentials: "include",
         headers: buildAuthHeaders(authToken),
       });
     });
@@ -333,6 +345,7 @@ export default function SocialPage() {
         `${API_BASE_URL}/pets/${petId}/friends/request`,
         {
           method: "POST",
+          credentials: "include",
           headers: buildAuthHeaders(authToken, true),
           body: JSON.stringify({
             targetPetId,
@@ -353,6 +366,7 @@ export default function SocialPage() {
         `${API_BASE_URL}/pets/${petId}/friends/${friendId}/accept`,
         {
           method: "POST",
+          credentials: "include",
           headers: buildAuthHeaders(authToken),
         },
         friendId
@@ -370,6 +384,7 @@ export default function SocialPage() {
         `${API_BASE_URL}/pets/${petId}/friends/${friendId}/reject`,
         {
           method: "POST",
+          credentials: "include",
           headers: buildAuthHeaders(authToken),
         },
         friendId
@@ -404,6 +419,7 @@ export default function SocialPage() {
         `${API_BASE_URL}/pets/${petId}/social/send`,
         {
           method: "POST",
+          credentials: "include",
           headers: buildAuthHeaders(authToken, true),
           body: JSON.stringify({
             targetPetId: selectedCandidate.pet.id,
@@ -417,14 +433,18 @@ export default function SocialPage() {
   };
 
   return (
-    <main className="min-h-screen bg-white px-6 py-12 text-gray-900">
-      <div className="mx-auto max-w-6xl">
-        <AppHeaderNav />
+    <main className={ui.pageShell}>
+      <div className={ui.pageInner}>
+        <AppHeaderNav
+          currentPetName={petName || null}
+          currentPetMeta={petSpecies || null}
+        />
 
-        <div className="mb-8 flex items-center justify-between gap-4">
+        <div className={ui.pageHero}>
           <div>
-            <h1 className="text-3xl font-bold sm:text-4xl">站内社交引擎</h1>
-            <p className="mt-3 text-base leading-7 text-gray-600">
+            <p className={ui.pageEyebrow}>Social dashboard</p>
+            <h1 className={ui.pageTitle}>站内社交引擎</h1>
+            <p className={ui.pageLead}>
               当前宠物：{petName || "未选择"}。在这里处理好友、消息和社交记录。
             </p>
           </div>
@@ -445,28 +465,40 @@ export default function SocialPage() {
           </div>
         </div>
 
-        <AuthSessionNotice authToken={authToken} className="mb-8" />
-
         {isLoading ? (
-          <div className={`${ui.cardSoft} p-6 text-sm text-gray-600`}>
-            正在加载社交数据...
+          <div className="grid gap-6 lg:grid-cols-[320px_minmax(0,1fr)] xl:grid-cols-[320px_minmax(0,1fr)_320px]">
+            <SkeletonBlock className="h-[520px]" label="正在加载社交目标" />
+            <SkeletonBlock className="h-[620px]" label="正在加载会话" />
+            <SkeletonBlock className="hidden h-[520px] xl:block" label="正在加载社交历史" />
           </div>
         ) : null}
 
         {!isLoading && !authToken ? (
-          <div className={`${ui.cardGhost} p-8 text-sm text-gray-600`}>
-            {statusMessage || LOGIN_REQUIRED_MESSAGE}
-          </div>
+          <EmptyState
+            title="请先登录"
+            description={statusMessage || LOGIN_REQUIRED_MESSAGE}
+            action={
+              <Link href="/" className={ui.buttonPrimary}>
+                去登录
+              </Link>
+            }
+          />
         ) : null}
 
         {!isLoading && authToken && !petId ? (
-          <div className={`${ui.cardGhost} p-8 text-sm text-gray-600`}>
-            {statusMessage || "先创建宠物，再回来发起站内社交。"}
-          </div>
+          <EmptyState
+            title="还没有可社交的宠物"
+            description={statusMessage || "先创建宠物，再回来发起站内社交。"}
+            action={
+              <Link href="/create-pet" className={ui.buttonPrimary}>
+                创建宠物
+              </Link>
+            }
+          />
         ) : null}
 
         {!isLoading && authToken && petId ? (
-          <div className="grid gap-6 xl:grid-cols-[1.15fr_1fr]">
+          <div className="grid gap-6 lg:grid-cols-[320px_minmax(0,1fr)] xl:grid-cols-[320px_minmax(0,1fr)_320px]">
             <SocialTargetsPanel
               candidates={candidates}
               selectedTargetId={selectedTargetId}
@@ -483,20 +515,23 @@ export default function SocialPage() {
               onRejectFriendship={(friendId) =>
                 void handleRejectFriendship(friendId)
               }
+              className="lg:sticky lg:top-6 lg:max-h-[calc(100dvh-3rem)]"
             />
 
-            <div className="space-y-6">
-              <SocialConversationPanel
-                petId={petId}
-                petName={petName}
-                selectedCandidate={selectedCandidate}
-                conversation={conversation}
-                latestReply={latestReply}
-                draftMessage={draftMessage}
-                isActing={isActing}
-                onDraftMessageChange={setDraftMessage}
-                onSendMessage={() => void handleSendMessage()}
-              />
+            <SocialConversationPanel
+              petId={petId}
+              petName={petName}
+              selectedCandidate={selectedCandidate}
+              conversation={conversation}
+              latestReply={latestReply}
+              draftMessage={draftMessage}
+              isActing={isActing}
+              onDraftMessageChange={setDraftMessage}
+              onSendMessage={() => void handleSendMessage()}
+              className="min-h-[680px]"
+            />
+
+            <div className="space-y-6 xl:sticky xl:top-6 xl:max-h-[calc(100dvh-3rem)] xl:overflow-y-auto xl:pr-1">
               <SocialTaskHistoryPanel tasks={tasks} />
               <SocialFriendshipsPanel friendships={friendships} />
             </div>

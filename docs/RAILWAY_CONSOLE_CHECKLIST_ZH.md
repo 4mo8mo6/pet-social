@@ -1,6 +1,6 @@
 # Railway 控制台逐项填写版
 
-更新时间：2026-04-01
+更新时间：2026-04-21
 
 这份文档只做一件事：
 
@@ -14,16 +14,15 @@
 
 ---
 
-## 1. 先建 4 个服务
+## 1. 先建 3 个必需服务
 
-在同一个 Railway Project 里，确保有这 4 个服务：
+在同一个 Railway Project 里，确保有这 3 个必需服务：
 
 1. `web`
 2. `api`
 3. `postgres`
-4. `redis`
 
-服务名尽量不要改，这样变量引用可以直接复制。
+服务名尽量不要改，这样变量引用可以直接复制。Redis 当前只是后续缓存或队列能力的预留项，不需要在当前部署里创建。
 
 ---
 
@@ -82,7 +81,6 @@ API_HOST=0.0.0.0
 CORS_ALLOWED_ORIGINS=https://${{web.RAILWAY_PUBLIC_DOMAIN}}
 
 DATABASE_URL=${{postgres.DATABASE_URL}}
-REDIS_URL=${{redis.REDIS_URL}}
 
 SECONDME_API_BASE_URL=https://api.mindverse.com/gate/lab
 SECONDME_CLIENT_ID=<填你的 SecondMe Client ID>
@@ -123,21 +121,9 @@ ${{postgres.DATABASE_URL}}
 
 ---
 
-## 5. `redis` 服务怎么填
+## 5. Redis 当前怎么处理
 
-也是 Railway 托管 Redis。
-
-你只要：
-
-1. 创建 Railway Redis 服务
-2. 服务名设成 `redis`
-3. 等它显示 Running / Healthy
-
-后面 `api` 会直接引用：
-
-```text
-${{redis.REDIS_URL}}
-```
+当前业务代码不读写 Redis，`REDIS_URL` / `REDIS_HOST` / `REDIS_PORT` 只作为后续缓存或队列能力的预留项。当前部署不要创建 `redis` 服务，也不要给 `api` 填 `REDIS_URL`。
 
 ---
 
@@ -146,17 +132,16 @@ ${{redis.REDIS_URL}}
 按这个顺序最省事：
 
 1. 建 `postgres`
-2. 建 `redis`
-3. 建 `api`
-4. 给 `api` 配 Variables
-5. 给 `api` 生成公网域名
-6. 部署 `api`
-7. 打开 `https://<api-domain>/health`
-8. 确认返回 `status: ok`
-9. 建 `web`
-10. 给 `web` 配 Variables
-11. 给 `web` 生成公网域名
-12. 部署 `web`
+2. 建 `api`
+3. 给 `api` 配 Variables
+4. 给 `api` 生成公网域名
+5. 部署 `api`
+6. 打开 `https://<api-domain>/health`
+7. 确认返回 `status: ok`
+8. 建 `web`
+9. 给 `web` 配 Variables
+10. 给 `web` 生成公网域名
+11. 部署 `web`
 
 ---
 

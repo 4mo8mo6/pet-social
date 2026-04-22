@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { AuthSessionNotice } from "../../lib/AuthSessionNotice";
 import {
   buildAuthHeaders,
   clearStoredAuth,
@@ -33,7 +32,14 @@ import {
   getTemperamentTag,
 } from "../../lib/pet-display";
 import { AppHeaderNav } from "../../lib/AppHeaderNav";
-import { ui } from "../../lib/ui";
+import { PetAvatarImage } from "../../lib/PetAvatarImage";
+import { cx, ui } from "../../lib/ui";
+
+const SPECIES_OPTIONS = ["猫", "狗", "兔子", "狐狸", "其他"] as const;
+const SIZE_OPTIONS = ["小型", "中型", "大型"] as const;
+const COLOR_OPTIONS = ["橘白", "纯黑", "奶油色", "灰白", "金色"] as const;
+const PERSONALITY_LIMIT = 160;
+const TRAITS_LIMIT = 140;
 
 function CreatePetPageContent() {
   const router = useRouter();
@@ -76,6 +82,7 @@ function CreatePetPageContent() {
         if (targetId) {
           const response = await fetch(`${API_BASE_URL}/pets/${targetId}`, {
             cache: "no-store",
+            credentials: "include",
             headers: buildAuthHeaders(storedAuthToken),
           });
 
@@ -145,6 +152,7 @@ function CreatePetPageContent() {
         isUpdating ? `${API_BASE_URL}/pets/${petId}` : `${API_BASE_URL}/pets`,
         {
           method: isUpdating ? "PUT" : "POST",
+          credentials: "include",
           headers: buildAuthHeaders(authToken, true),
           body: JSON.stringify(pet),
         }
@@ -226,24 +234,35 @@ function CreatePetPageContent() {
   const petSocialStatus = getSocialStatus(pet);
 
   return (
-    <main className="min-h-screen bg-white px-6 py-12 text-gray-900">
-      <div className="mx-auto max-w-5xl">
-        <AppHeaderNav />
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold sm:text-4xl">
+    <main className={ui.pageShell}>
+      <div className="mx-auto w-full max-w-6xl">
+        <AppHeaderNav
+          currentPetName={petId !== null ? pet.petName || null : null}
+          currentPetMeta={petId !== null ? pet.species || null : null}
+        />
+        <div className={ui.pageHero}>
+          <div>
+          <p className={ui.pageEyebrow}>Pet profile</p>
+          <h1 className={ui.pageTitle}>
             {petId !== null ? "编辑宠物" : "创建宠物"}
           </h1>
-          <p className="mt-3 text-base leading-7 text-gray-600">
+          <p className={ui.pageLead}>
             {petId !== null
               ? "修改后立即生效。"
               : "填写基础资料。"}
           </p>
+          </div>
         </div>
 
-        <AuthSessionNotice authToken={authToken} className="mb-8" />
+        <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_420px]">
+          <form className={`space-y-5 ${ui.cardElevated} p-4 sm:p-6`}>
+            <div>
+              <p className={ui.sectionTitle}>基础身份</p>
+              <p className="mt-2 text-sm leading-6 text-stone-600">
+                先给这只宠物一个清楚的角色轮廓。
+              </p>
+            </div>
 
-        <div className="grid gap-8 lg:grid-cols-2">
-          <form className={`space-y-6 ${ui.card} p-6`}>
             <div>
               <label
                 htmlFor="petName"
@@ -270,21 +289,28 @@ function CreatePetPageContent() {
               >
                 宠物品种
               </label>
-              <select
-                id="species"
-                name="species"
-                disabled={isLoadingPet || isSavingPet}
-                value={pet.species}
-                onChange={(e) => handlePetChange("species", e.target.value)}
-                className={ui.input}
-              >
-                <option value="">请选择一个品种</option>
-                <option value="猫">猫</option>
-                <option value="狗">狗</option>
-                <option value="兔子">兔子</option>
-                <option value="狐狸">狐狸</option>
-                <option value="其他">其他</option>
-              </select>
+              <div className="grid gap-2 sm:grid-cols-5">
+                {SPECIES_OPTIONS.map((species) => (
+                  <button
+                    key={species}
+                    type="button"
+                    disabled={isLoadingPet || isSavingPet}
+                    onClick={() => handlePetChange("species", species)}
+                    aria-pressed={pet.species === species}
+                    className={cx(
+                      ui.tab,
+                      "justify-center rounded-xl py-3",
+                      pet.species === species && ui.tabActive
+                    )}
+                  >
+                    {species}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="border-t border-[#eee4d6] pt-5">
+              <p className={ui.sectionTitle}>外观</p>
             </div>
 
             <div>
@@ -304,6 +330,19 @@ function CreatePetPageContent() {
                 placeholder="例如：橘白、纯黑、奶油色"
                 className={ui.input}
               />
+              <div className="mt-3 flex flex-wrap gap-2">
+                {COLOR_OPTIONS.map((color) => (
+                  <button
+                    key={color}
+                    type="button"
+                    disabled={isLoadingPet || isSavingPet}
+                    onClick={() => handlePetChange("color", color)}
+                    className={cx(ui.statusBadgeNeutral, pet.color === color && "border-stone-900 bg-stone-900 text-white")}
+                  >
+                    {color}
+                  </button>
+                ))}
+              </div>
             </div>
 
             <div>
@@ -313,19 +352,24 @@ function CreatePetPageContent() {
               >
                 体型大小
               </label>
-              <select
-                id="size"
-                name="size"
-                disabled={isLoadingPet || isSavingPet}
-                value={pet.size}
-                onChange={(e) => handlePetChange("size", e.target.value)}
-                className={ui.input}
-              >
-                <option value="">请选择体型</option>
-                <option value="小型">小型</option>
-                <option value="中型">中型</option>
-                <option value="大型">大型</option>
-              </select>
+              <div className="grid grid-cols-3 gap-2">
+                {SIZE_OPTIONS.map((size) => (
+                  <button
+                    key={size}
+                    type="button"
+                    disabled={isLoadingPet || isSavingPet}
+                    onClick={() => handlePetChange("size", size)}
+                    aria-pressed={pet.size === size}
+                    className={cx(ui.tab, "justify-center rounded-xl py-3", pet.size === size && ui.tabActive)}
+                  >
+                    {size}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="border-t border-[#eee4d6] pt-5">
+              <p className={ui.sectionTitle}>性格</p>
             </div>
 
             <div>
@@ -345,6 +389,9 @@ function CreatePetPageContent() {
                 placeholder="例如：很黏人，喜欢撒娇，看到新朋友会先观察一下。"
                 className={ui.input}
               />
+              <p className="mt-2 text-right text-xs text-stone-500">
+                {pet.personality.length}/{PERSONALITY_LIMIT}
+              </p>
             </div>
 
             <div>
@@ -364,6 +411,9 @@ function CreatePetPageContent() {
                 placeholder="例如：左耳有一点卷，尾巴尖是白色，脖子上有一圈浅色毛。"
                 className={ui.input}
               />
+              <p className="mt-2 text-right text-xs text-stone-500">
+                {pet.specialTraits.length}/{TRAITS_LIMIT}
+              </p>
             </div>
 
             {isLoadingPet ? (
@@ -372,13 +422,13 @@ function CreatePetPageContent() {
               </div>
             ) : null}
 
-            <div className="pt-2">
+            <div className={`${ui.stickyActionBar} mt-2`}>
               <div className="flex flex-wrap items-center gap-3">
                 <button
                   type="button"
                   onClick={handleSavePet}
                   disabled={isLoadingPet || isSavingPet}
-                  className={ui.buttonPrimary}
+                  className="inline-flex items-center justify-center rounded-xl bg-white px-5 py-3 text-sm font-semibold text-stone-950 transition hover:bg-stone-100 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {isSavingPet
                     ? "保存中..."
@@ -389,7 +439,7 @@ function CreatePetPageContent() {
 
                 <Link
                   href="/my-pet"
-                  className={ui.buttonSubtle}
+                  className="text-sm font-medium text-stone-200 transition hover:text-white"
                 >
                   去查看我的宠物 →
                 </Link>
@@ -411,7 +461,7 @@ function CreatePetPageContent() {
             </div>
           </form>
 
-          <section className={`${ui.cardWarm} p-6`}>
+          <section className={`${ui.cardWarm} p-4 sm:p-6 lg:sticky lg:top-6 lg:self-start`}>
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h2 className="text-2xl font-semibold text-gray-900">
@@ -428,15 +478,19 @@ function CreatePetPageContent() {
               <div className="bg-gradient-to-br from-orange-100 via-amber-50 to-white p-6">
                 <div className="flex items-start gap-4">
                   <div className="flex flex-col items-center">
-                    <div className="flex h-28 w-28 items-center justify-center rounded-[2rem] bg-white text-5xl shadow-sm ring-8 ring-white/70">
-                      <span aria-hidden="true">{petSpeciesVisual.icon}</span>
-                    </div>
+                    <PetAvatarImage
+                      pet={pet}
+                      className="h-28 w-28 rounded-[2rem] bg-white shadow-sm ring-8 ring-white/70"
+                    />
                     <div className="mt-3 flex items-center gap-2 rounded-full bg-white/80 px-3 py-2 text-xs text-gray-500 shadow-sm">
                       <span
                         className={`h-3 w-3 rounded-full ring-1 ring-black/5 ${petColorDisplay.swatchClass}`}
                       />
                       {petColorDisplay.helper}
                     </div>
+                    <p className="mt-2 text-center text-[11px] leading-5 text-amber-700">
+                      根据描述实时绘制
+                    </p>
                   </div>
 
                   <div className="min-w-0 flex-1">

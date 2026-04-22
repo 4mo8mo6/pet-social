@@ -1,15 +1,34 @@
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import AnyUrl, BaseModel, Field, field_validator
 
 
 class PetBase(BaseModel):
-    petName: str
-    species: str
-    color: str
-    size: str
-    personality: str
-    specialTraits: str
+    petName: str = Field(min_length=1, max_length=100)
+    species: str = Field(min_length=1, max_length=50)
+    color: str = Field(min_length=1, max_length=100)
+    size: str = Field(min_length=1, max_length=50)
+    personality: str = Field(min_length=1, max_length=500)
+    specialTraits: str = Field(default="", max_length=500)
+
+    @field_validator(
+        "petName",
+        "species",
+        "color",
+        "size",
+        "personality",
+    )
+    @classmethod
+    def strip_required_pet_text(cls, value: str) -> str:
+        normalized_value = value.strip()
+        if not normalized_value:
+            raise ValueError("Pet profile fields cannot be blank.")
+        return normalized_value
+
+    @field_validator("specialTraits")
+    @classmethod
+    def strip_optional_pet_text(cls, value: str) -> str:
+        return value.strip()
 
 
 class PetCreate(PetBase):
@@ -133,10 +152,26 @@ class SocialSendRequest(BaseModel):
     targetPetId: int
     message: str = Field(min_length=1, max_length=500)
 
+    @field_validator("message")
+    @classmethod
+    def strip_message(cls, value: str) -> str:
+        normalized_value = value.strip()
+        if not normalized_value:
+            raise ValueError("Message cannot be blank.")
+        return normalized_value
+
 
 class ExternalA2ASendRequest(BaseModel):
-    agentUrl: str = Field(min_length=1, max_length=500)
+    agentUrl: AnyUrl = Field(max_length=500)
     message: str = Field(min_length=1, max_length=500)
+
+    @field_validator("message")
+    @classmethod
+    def strip_external_message(cls, value: str) -> str:
+        normalized_value = value.strip()
+        if not normalized_value:
+            raise ValueError("External A2A message cannot be blank.")
+        return normalized_value
 
 
 class PetTaskResponse(BaseModel):

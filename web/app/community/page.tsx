@@ -157,14 +157,17 @@ export default function CommunityPage() {
     const [petResponse, candidatesResponse, tasksResponse] = await Promise.all([
       fetch(`${API_BASE_URL}/pets/${activePetId}`, {
         cache: "no-store",
+        credentials: "include",
         headers: buildAuthHeaders(token),
       }),
       fetch(`${API_BASE_URL}/pets/${activePetId}/social/candidates`, {
         cache: "no-store",
+        credentials: "include",
         headers: buildAuthHeaders(token),
       }),
       fetch(`${API_BASE_URL}/pets/${activePetId}/social/tasks`, {
         cache: "no-store",
+        credentials: "include",
         headers: buildAuthHeaders(token),
       }),
     ]);
@@ -319,6 +322,7 @@ export default function CommunityPage() {
     try {
       const response = await fetch(`${API_BASE_URL}/pets/${petId}/social/round`, {
         method: "POST",
+        credentials: "include",
         headers: buildAuthHeaders(authToken),
       });
 
@@ -350,8 +354,8 @@ export default function CommunityPage() {
   };
 
   return (
-    <main className="min-h-screen bg-[#fffaf4] px-6 py-12 text-gray-900">
-      <div className="mx-auto max-w-6xl">
+    <main className="min-h-dvh bg-[#fffaf4] px-4 py-6 text-gray-900 sm:px-6 sm:py-8 lg:px-8 lg:py-10">
+      <div className="mx-auto w-full max-w-6xl">
         <AppHeaderNav />
 
         <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
@@ -439,10 +443,10 @@ export default function CommunityPage() {
                   手动触发社交
                 </h2>
                 <p className="mt-2 text-sm leading-6 text-gray-600">
-                  当前阶段只支持你手动让宠物发起一轮站内社交。社区页加载时只读取宠物列表和最近社交记录，不会自动触发新的社交行为。
+                  社区页加载时只读取宠物列表和最近社交记录，不会自动触发新的社交行为；你仍可在这里手动发起一轮站内社交，方便 demo 和即时验证。
                 </p>
                 <p className="mt-2 text-sm leading-6 text-amber-800">
-                  真正的定时自主社交会在后续引入 worker 后再开启。
+                  后端已接入 APScheduler 自动社交 worker；手动按钮用于即时演示，不影响后台定时策略和每日配额。
                 </p>
               </div>
 

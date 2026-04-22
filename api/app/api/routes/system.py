@@ -20,9 +20,6 @@ def health_check() -> dict[str, object]:
     postgres_status: dict[str, object] = {
         "mode": "database_url" if settings.database_url_override else "host_port",
     }
-    redis_status: dict[str, object] = {
-        "mode": "redis_url" if settings.redis_url_override else "host_port",
-    }
 
     if settings.database_url_override:
         postgres_status["configured"] = True
@@ -34,6 +31,12 @@ def health_check() -> dict[str, object]:
                 "database": settings.postgres_db,
             }
         )
+
+    redis_status: dict[str, object] = {
+        "mode": "redis_url" if settings.redis_url_override else "host_port",
+        "runtimeUsage": "reserved_not_required",
+        "note": "Redis settings are retained for future cache or queue work; the current API runtime does not read or write Redis.",
+    }
 
     if settings.redis_url_override:
         redis_status["configured"] = True
@@ -53,6 +56,8 @@ def health_check() -> dict[str, object]:
         "corsAllowedOrigins": list(settings.cors_allowed_origins),
         "services": {
             "postgres": postgres_status,
+        },
+        "reservedServices": {
             "redis": redis_status,
         },
     }

@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import {
+  AUTH_COOKIE_NAME,
   SECONDME_AUTH_RESULT_COOKIE_NAME,
   SECONDME_STATE_COOKIE_NAME,
 } from "../../../../../lib/auth";
 import { getAppBaseUrl } from "../../../../../lib/site";
 
 const DEFAULT_API_BASE_URL = "http://localhost:8000";
+const AUTH_COOKIE_MAX_AGE_SECONDS = 14 * 24 * 60 * 60;
 
 type SecondMeTokenPayload = {
   accessToken: string;
@@ -48,6 +50,16 @@ const readApiBaseUrl = () => {
   return new URL(configuredValue, getAppBaseUrl()).toString().replace(/\/$/, "");
 };
 
+const shouldUseSecureAuthCookie = () => {
+  const explicitValue = process.env.AUTH_COOKIE_SECURE?.trim().toLowerCase();
+
+  if (explicitValue) {
+    return ["1", "true", "yes", "on"].includes(explicitValue);
+  }
+
+  return process.env.NODE_ENV === "production";
+};
+
 const buildLoginUrl = (searchParams?: Record<string, string>) => {
   const loginUrl = new URL("/login", getAppBaseUrl());
 
@@ -62,7 +74,8 @@ const buildLoginUrl = (searchParams?: Record<string, string>) => {
 
 const buildLoginRedirect = (
   searchParams?: Record<string, string>,
-  authResultCookie?: string
+  authResultCookie?: string,
+  authToken?: string
 ) => {
   const response = NextResponse.redirect(buildLoginUrl(searchParams));
 
@@ -87,6 +100,18 @@ const buildLoginRedirect = (
       value: "",
       path: "/",
       maxAge: 0,
+    });
+  }
+
+  if (authToken) {
+    response.cookies.set({
+      name: AUTH_COOKIE_NAME,
+      value: authToken,
+      path: "/",
+      httpOnly: true,
+      secure: shouldUseSecureAuthCookie(),
+      sameSite: "lax",
+      maxAge: AUTH_COOKIE_MAX_AGE_SECONDS,
     });
   }
 
@@ -157,9 +182,9 @@ const readResponseMessage = async (
   return fallbackMessage;
 };
 
-const encodeAuthResultCookie = (token: string, email: string) =>
+const encodeAuthResultCookie = (email: string) =>
   encodeURIComponent(
-    Buffer.from(JSON.stringify({ token, email }), "utf-8").toString("base64url")
+    Buffer.from(JSON.stringify({ email }), "utf-8").toString("base64url")
   );
 
 export async function GET(request: NextRequest) {
@@ -255,7 +280,8 @@ export async function GET(request: NextRequest) {
 
     return buildLoginRedirect(
       { secondme: "success" },
-      encodeAuthResultCookie(backendPayload.token, backendPayload.user.email)
+      encodeAuthResultCookie(backendPayload.user.email),
+      backendPayload.token
     );
   } catch (error) {
     return buildLoginRedirect({

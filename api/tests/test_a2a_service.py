@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import sys
 import types
 import unittest
@@ -406,7 +407,11 @@ class A2AServiceTests(unittest.TestCase):
         self.assertEqual(parsed["replyText"], "remote-reply")
 
     def test_send_message_to_external_a2a_agent_posts_json_rpc_request(self):
-        with patch.object(
+        with patch.dict(os.environ, {"A2A_ALLOWED_HOSTS": "remote.example"}), patch.object(
+            self.a2a.socket,
+            "getaddrinfo",
+            return_value=[(None, None, None, None, ("93.184.216.34", 443))],
+        ), patch.object(
             self.a2a,
             "urlopen",
             return_value=FakeHttpResponse(
@@ -456,7 +461,11 @@ class A2AServiceTests(unittest.TestCase):
         self.assertEqual(parsed["replyText"], "remote hello")
 
     def test_send_message_to_external_a2a_agent_maps_remote_error_to_http_exception(self):
-        with patch.object(
+        with patch.dict(os.environ, {"A2A_ALLOWED_HOSTS": "remote.example"}), patch.object(
+            self.a2a.socket,
+            "getaddrinfo",
+            return_value=[(None, None, None, None, ("93.184.216.34", 443))],
+        ), patch.object(
             self.a2a,
             "urlopen",
             return_value=FakeHttpResponse(
@@ -481,7 +490,11 @@ class A2AServiceTests(unittest.TestCase):
         self.assertIn("Remote agent refused the message.", context.exception.detail)
 
     def test_send_message_to_external_a2a_agent_maps_timeout_to_http_exception(self):
-        with patch.object(self.a2a, "urlopen", side_effect=TimeoutError):
+        with patch.dict(os.environ, {"A2A_ALLOWED_HOSTS": "remote.example"}), patch.object(
+            self.a2a.socket,
+            "getaddrinfo",
+            return_value=[(None, None, None, None, ("93.184.216.34", 443))],
+        ), patch.object(self.a2a, "urlopen", side_effect=TimeoutError):
             with self.assertRaises(self.http_exception) as context:
                 self.a2a.send_message_to_external_a2a_agent(
                     "https://remote.example/a2a/pets/9",
@@ -495,6 +508,56 @@ class A2AServiceTests(unittest.TestCase):
             "External A2A agent request timed out.",
         )
 
+    def test_external_a2a_agent_url_requires_registered_https_host(self):
+        with self.assertRaises(self.http_exception) as context:
+            self.a2a.validate_external_a2a_agent_url(
+                "http://remote.example/a2a/pets/9"
+            )
+
+        self.assertEqual(context.exception.status_code, 400)
+        self.assertEqual(
+            context.exception.detail,
+            "External A2A agent URL must use HTTPS.",
+        )
+
+        with self.assertRaises(self.http_exception) as context:
+            self.a2a.validate_external_a2a_agent_url(
+                "https://unregistered.example/a2a/pets/9"
+            )
+
+        self.assertEqual(context.exception.status_code, 400)
+        self.assertEqual(
+            context.exception.detail,
+            "External A2A agent URL host is not registered.",
+        )
+
+    def test_external_a2a_agent_url_blocks_local_and_private_addresses(self):
+        with patch.dict(os.environ, {"A2A_ALLOWED_HOSTS": "localhost"}):
+            with self.assertRaises(self.http_exception) as context:
+                self.a2a.validate_external_a2a_agent_url("https://localhost/a2a")
+
+        self.assertEqual(context.exception.status_code, 400)
+        self.assertEqual(
+            context.exception.detail,
+            "External A2A agent URL host is not allowed.",
+        )
+
+        with patch.dict(os.environ, {"A2A_ALLOWED_HOSTS": "remote.example"}), patch.object(
+            self.a2a.socket,
+            "getaddrinfo",
+            return_value=[(None, None, None, None, ("10.0.0.5", 443))],
+        ):
+            with self.assertRaises(self.http_exception) as context:
+                self.a2a.validate_external_a2a_agent_url(
+                    "https://remote.example/a2a/pets/9"
+                )
+
+        self.assertEqual(context.exception.status_code, 400)
+        self.assertEqual(
+            context.exception.detail,
+            "External A2A agent URL resolves to a non-public address.",
+        )
+
     def test_create_outbound_a2a_task_for_pet_persists_remote_result(self):
         db = types.SimpleNamespace(
             add=MagicMock(),
@@ -504,7 +567,11 @@ class A2AServiceTests(unittest.TestCase):
         )
         pet = types.SimpleNamespace(id=7)
 
-        with patch.object(
+        with patch.dict(os.environ, {"A2A_ALLOWED_HOSTS": "remote.example"}), patch.object(
+            self.a2a.socket,
+            "getaddrinfo",
+            return_value=[(None, None, None, None, ("93.184.216.34", 443))],
+        ), patch.object(
             self.a2a,
             "send_message_to_external_a2a_agent",
             return_value={
@@ -543,7 +610,11 @@ class A2AServiceTests(unittest.TestCase):
         )
         pet = types.SimpleNamespace(id=7)
 
-        with patch.object(
+        with patch.dict(os.environ, {"A2A_ALLOWED_HOSTS": "remote.example"}), patch.object(
+            self.a2a.socket,
+            "getaddrinfo",
+            return_value=[(None, None, None, None, ("93.184.216.34", 443))],
+        ), patch.object(
             self.a2a,
             "send_message_to_external_a2a_agent",
             side_effect=self.http_exception(

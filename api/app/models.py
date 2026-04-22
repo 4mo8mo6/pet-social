@@ -123,6 +123,12 @@ class AuthSession(Base):
     token: Mapped[str] = mapped_column(
         String(255), nullable=False, unique=True, index=True
     )
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+    last_used_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

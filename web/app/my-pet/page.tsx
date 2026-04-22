@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { AuthSessionNotice } from "../../lib/AuthSessionNotice";
 import {
   buildAuthHeaders,
   clearStoredAuth,
@@ -44,6 +43,7 @@ import {
 } from "../../lib/PetStatusPanel";
 import { type PetStatusViewState } from "../../lib/pet-status-view";
 import { AppHeaderNav } from "../../lib/AppHeaderNav";
+import { PetAvatarImage } from "../../lib/PetAvatarImage";
 import { ui } from "../../lib/ui";
 
 export default function MyPetPage() {
@@ -161,10 +161,12 @@ export default function MyPetPage() {
         const [petResponse, messagesResponse] = await Promise.all([
           fetch(`${API_BASE_URL}/pets/${activePetId}`, {
             cache: "no-store",
+            credentials: "include",
             headers: buildAuthHeaders(storedAuthToken),
           }),
           fetch(`${API_BASE_URL}/pets/${activePetId}/messages`, {
             cache: "no-store",
+            credentials: "include",
             headers: buildAuthHeaders(storedAuthToken),
           }),
         ]);
@@ -201,10 +203,12 @@ export default function MyPetPage() {
             const [restoredPetResponse, restoredMessagesResponse] = await Promise.all([
               fetch(`${API_BASE_URL}/pets/${activePetId}`, {
                 cache: "no-store",
+                credentials: "include",
                 headers: buildAuthHeaders(storedAuthToken),
               }),
               fetch(`${API_BASE_URL}/pets/${activePetId}/messages`, {
                 cache: "no-store",
+                credentials: "include",
                 headers: buildAuthHeaders(storedAuthToken),
               }),
             ]);
@@ -356,6 +360,7 @@ export default function MyPetPage() {
       try {
         const response = await fetch(`${API_BASE_URL}/pets/${petId}/status`, {
           cache: "no-store",
+          credentials: "include",
           headers: buildAuthHeaders(authToken),
         });
 
@@ -449,8 +454,8 @@ export default function MyPetPage() {
     : emptyStateMessage;
 
   return (
-    <main className="min-h-screen bg-white px-6 py-12 text-gray-900">
-      <div className="mx-auto max-w-4xl">
+    <main className="min-h-dvh bg-white px-4 py-6 text-gray-900 sm:px-6 sm:py-8 lg:px-8 lg:py-10">
+      <div className="mx-auto w-full max-w-4xl">
         <AppHeaderNav />
 
         <div className="mb-8">
@@ -468,8 +473,6 @@ export default function MyPetPage() {
             )}
           </div>
         </div>
-
-        <AuthSessionNotice authToken={authToken} className="mb-8" />
 
         {!isLoaded ? (
           <section className={`${ui.cardSoft} p-6 shadow-sm`}>
@@ -520,9 +523,10 @@ export default function MyPetPage() {
               <div className="bg-gradient-to-br from-orange-100 via-amber-50 to-white p-6">
                 <div className="flex items-start gap-4">
                   <div className="flex flex-col items-center">
-                    <div className="flex h-28 w-28 items-center justify-center rounded-[2rem] bg-white text-5xl shadow-sm ring-8 ring-white/70">
-                      <span aria-hidden="true">{petSpeciesVisual.icon}</span>
-                    </div>
+                    <PetAvatarImage
+                      pet={pet}
+                      className="h-28 w-28 rounded-[2rem] bg-white shadow-sm ring-8 ring-white/70"
+                    />
                     <div className="mt-3 flex items-center gap-2 rounded-full bg-white/80 px-3 py-2 text-xs text-gray-500 shadow-sm">
                       <span
                         className={`h-3 w-3 rounded-full ring-1 ring-black/5 ${petColorDisplay.swatchClass}`}
@@ -636,7 +640,7 @@ export default function MyPetPage() {
                 </div>
 
                 <div className="mt-4 rounded-2xl border border-dashed border-orange-200 bg-orange-50/70 p-4 text-sm leading-6 text-gray-600">
-                  现在这张资料卡已经能用品种图标、颜色展示和体型标签，先把宠物的外貌感做出来，后续如果接图片也能自然延展。
+                  现在这张资料卡会根据品种、颜色、体型、性格和特殊特征实时绘制卡通头像，回到创建页修改描述后会同步更新。
                 </div>
               </div>
 

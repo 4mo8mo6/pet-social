@@ -2,22 +2,23 @@
 
 > 生成时间：2026-03-30
 > 按优先级排列，逐步实施
+> 状态更新：2026-04-21，阶段 A 已完成；APScheduler 已接入状态衰减与自动社交 worker。本文保留为历史实施计划，后续重点转为观测、调参和发布打磨。
 
 ---
 
-## 阶段 A：真正自主社交（APScheduler Worker）
+## 阶段 A：自主社交调优（APScheduler Worker 已接入）
 
-### 当前问题
-- 社交回合只能主人手动触发（`POST /pets/{id}/social/round`）
-- `startup.py` 是空函数，没有后台任务
-- `requirements.txt` 没有 APScheduler
+### 当前状态
+- 社交回合仍支持主人手动触发（`POST /pets/{id}/social/round`），用于 demo 和即时验证
+- `startup.py` 已启动 BackgroundScheduler，并注册状态衰减与自动社交任务
+- `requirements.txt` 已包含 `apscheduler>=3.10`
 
-### 改动文件
+### 已落地文件
 | 文件 | 改动内容 |
 |------|---------|
-| `api/requirements.txt` | 添加 `apscheduler>=3.10` |
+| `api/requirements.txt` | 已添加 `apscheduler>=3.10` |
 | `api/app/startup.py` | 启动 BackgroundScheduler，注册两个定时任务 |
-| `api/app/services/auto_social.py` | 新建：自主社交 worker 逻辑 |
+| `api/app/services/auto_social.py` | 自主社交 worker 逻辑 |
 | `api/app/main.py` | 在 lifespan 中启动/关闭 scheduler |
 
 ### 两个定时任务
@@ -82,7 +83,7 @@
 ## 实施顺序
 
 ```
-阶段 A（自主社交） → 阶段 B（宠物管理 UI） → 阶段 C（场景视觉）
+阶段 A（自主社交，已接入） → 阶段 B（宠物管理 UI） → 阶段 C（场景视觉）
 ```
 
 每阶段完成后跑一次 `pytest` + `tsc --noEmit` 验证。

@@ -29,6 +29,11 @@ import {
   getHomeStatusSummaryText,
   getPetStatusEmptyState,
 } from "../lib/pet-status-view";
+import {
+  buildPetAvatarSpec,
+  buildPetAvatarSvg,
+  hexToNumber,
+} from "../lib/pet-avatar";
 
 function createStatus(overrides: Partial<PetStatus> = {}): PetStatus {
   return {
@@ -182,6 +187,53 @@ runTest("home scene pet sprite changes by species", () => {
     earStyle: "long",
     tailStyle: "cotton",
   });
+});
+
+runTest("pet avatar spec is derived from profile description", () => {
+  const spec = buildPetAvatarSpec({
+    petName: "小莓",
+    species: "猫",
+    color: "橘白",
+    size: "小型",
+    personality: "活泼又好奇",
+    specialTraits: "尾巴尖是白色，额头有条纹",
+  });
+
+  assert.equal(spec.species, "cat");
+  assert.equal(spec.primaryColor, "#f59e0b");
+  assert.equal(spec.expression, "happy");
+  assert.equal(spec.marks.stripes, true);
+  assert.equal(spec.marks.tailTip, true);
+  assert.equal(hexToNumber(spec.primaryColor, 0), 0xf59e0b);
+});
+
+runTest("pet avatar can infer dark fur from name when color is blank", () => {
+  const spec = buildPetAvatarSpec({
+    petName: "小墨",
+    species: "猫",
+    color: "",
+    size: "小型",
+    personality: "安静",
+    specialTraits: "",
+  });
+
+  assert.equal(spec.primaryColor, "#1f2937");
+});
+
+runTest("pet avatar svg renders a self-contained cartoon image", () => {
+  const svg = buildPetAvatarSvg({
+    petName: "糯米",
+    species: "兔子",
+    color: "奶油色",
+    size: "小型",
+    personality: "黏人，喜欢撒娇",
+    specialTraits: "戴着小铃铛项圈",
+  });
+
+  assert.match(svg, /^<svg /);
+  assert.match(svg, /linearGradient/);
+  assert.match(svg, /糯米/);
+  assert.match(svg, /<ellipse cx="91" cy="48"/);
 });
 
 runTest("pet interaction menu keeps status view and chat entry separate", () => {

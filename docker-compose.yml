@@ -1,4 +1,24 @@
 services:
+  web:
+    image: node:20-bookworm-slim
+    container_name: pet-agent-social-web
+    working_dir: /app
+    command: >
+      sh -c "npm install &&
+      npm run dev -- --hostname 0.0.0.0"
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./web:/app
+      - web_node_modules:/app/node_modules
+    env_file: ./web/.env.local
+    environment:
+      NEXT_PUBLIC_APP_BASE_URL: http://localhost:3000
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
+      API_BASE_URL: http://api:8000
+    depends_on:
+      - api
+
   api:
     build:
       context: ./api
@@ -22,11 +42,8 @@ services:
       POSTGRES_DB: pet_agent_social
       POSTGRES_USER: pet_agent
       POSTGRES_PASSWORD: pet_agent_password
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
     depends_on:
       - postgres
-      - redis
 
   postgres:
     image: postgres:16-alpine
@@ -40,15 +57,6 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
-  redis:
-    image: redis:7-alpine
-    container_name: pet-agent-social-redis
-    ports:
-      - "6379:6379"
-    command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
-    volumes:
-      - redis_data:/data
-
 volumes:
   postgres_data:
-  redis_data:
+  web_node_modules:

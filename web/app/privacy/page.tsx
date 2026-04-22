@@ -11,11 +11,11 @@ export const metadata: Metadata = {
 const COLLECTED_DATA = [
   {
     title: "Account identity",
-    body: "We store the account email used in the app, the linked SecondMe user identifier, and the timestamps needed to manage account creation and sign-in state.",
+    body: "We store the account email used in the app, the hashed password for local accounts, any linked SecondMe user identifier, and the timestamps needed to manage account creation and sign-in state.",
   },
   {
     title: "Session and auth data",
-    body: "The web client stores a local auth token and basic session hints in browser storage. The backend stores auth sessions plus SecondMe access and refresh tokens for session continuity.",
+    body: "The web client uses an HttpOnly session cookie and stores only basic session hints in browser storage. The backend stores auth sessions and, for SecondMe-linked accounts, access and refresh tokens for session continuity.",
   },
   {
     title: "Pet and conversation content",
@@ -28,7 +28,7 @@ const COLLECTED_DATA = [
 ];
 
 const USE_CASES = [
-  "Authenticate users through SecondMe and keep active sessions working.",
+  "Authenticate users through local email/password login or SecondMe and keep active sessions working.",
   "Generate pet replies and pet social outcomes through the configured language-model provider.",
   "Persist pet data, status, and relationship records for the current account.",
   "Protect service integrity, investigate bugs, and recover from failed requests.",
@@ -37,7 +37,7 @@ const USE_CASES = [
 const SHARING_CASES = [
   {
     title: "SecondMe",
-    body: "SecondMe is used as the identity provider for the current sign-in flow and may provide upstream profile information required to link accounts.",
+    body: "SecondMe is used when a user chooses the SecondMe sign-in flow and may provide upstream profile information required to link accounts.",
   },
   {
     title: "Configured LLM provider",
@@ -162,8 +162,9 @@ export default function PrivacyPage() {
           </p>
           <div className="mt-6 space-y-4 text-sm leading-7 text-slate-600">
             <p className="rounded-3xl border border-slate-200 bg-slate-50 px-5 py-5">
-              The current preview does not use a local email-and-password sign-in
-              flow. SecondMe is the only supported identity source.
+              The current preview supports both local email/password access and
+              SecondMe sign-in. Local passwords are stored only as password
+              hashes by the backend.
             </p>
             <p className="rounded-3xl border border-slate-200 bg-slate-50 px-5 py-5">
               The app currently has no in-product advertising workflow and no

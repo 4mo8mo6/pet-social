@@ -74,6 +74,7 @@ export const getAuthProviderLabel = (authProvider: string) =>
 
 export const requestCurrentUser = async (token: string) => {
   const response = await fetch(`${API_BASE_URL}/auth/me`, {
+    credentials: "include",
     headers: buildAuthHeaders(token),
     cache: "no-store",
   });

@@ -11,7 +11,6 @@ import {
   useState,
 } from "react";
 
-import { AuthSessionNotice } from "../../lib/AuthSessionNotice";
 import {
   buildAuthHeaders,
   clearStoredAuth,
@@ -44,13 +43,10 @@ import {
   isPlacedFurnitureListResponse,
 } from "../../lib/furniture";
 import {
-  HOME_SCENE_ROOMS,
-  HOME_PET_INTERACTION_MENU_ITEMS,
   HOME_SCENE_OBJECTS,
+  HOME_SCENE_ROOMS,
   type HomeSocialEmotion,
   type HomeRoomId,
-  type HomeSceneObjectAction,
-  type HomeSceneObjectMeta,
   type PetInteractionMenuAction,
 } from "../../lib/home-scene";
 import {
@@ -70,7 +66,6 @@ import {
   type HomeStatusSyncNotice,
 } from "../../lib/home-scene-notice";
 import {
-  PetStatusPanel,
   type PetStatus,
   isPetStatus,
 } from "../../lib/PetStatusPanel";
@@ -81,6 +76,16 @@ import {
   type PetStatusViewState,
 } from "../../lib/pet-status-view";
 import { AppHeaderNav } from "../../lib/AppHeaderNav";
+import { EmptyState, SkeletonBlock } from "../../lib/feedback";
+import { HomeChatPanel } from "../../lib/home/HomeChatPanel";
+import { HomeFurniturePanel } from "../../lib/home/HomeFurniturePanel";
+import { HomeHero } from "../../lib/home/HomeHero";
+import { HomeSceneShell } from "../../lib/home/HomeSceneShell";
+import {
+  HomeSidebarTabs,
+  type HomeCompanionTab,
+} from "../../lib/home/HomeSidebarTabs";
+import { HomeStatusPanel, type CareAction } from "../../lib/home/HomeStatusPanel";
 import { ui } from "../../lib/ui";
 
 const PetHomeScene = dynamic(
@@ -91,36 +96,17 @@ const PetHomeScene = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className="aspect-square w-full rounded-[28px] border border-orange-200 bg-[#fff7ed] p-6 text-sm text-amber-700">
-        正在加载家庭场景...
+      <div className={`${ui.skeleton} aspect-square w-full p-6 text-sm text-[#8b6447]`}>
+        正在打开小窝...
       </div>
     ),
   }
 );
 
-const HOME_LOAD_FAILURE_MESSAGE = "加载家庭场景失败，请稍后再试。";
-const HOME_CHAT_LOAD_FAILURE_MESSAGE = "加载家庭场景聊天记录失败，请稍后再试。";
-const HOME_CHAT_SEND_FAILURE_MESSAGE = "发送聊天消息失败，请稍后再试。";
+const HOME_LOAD_FAILURE_MESSAGE = "刚刚没打开小窝，再试试吧。";
+const HOME_CHAT_LOAD_FAILURE_MESSAGE = "刚刚没翻到聊天记录，再试试吧。";
+const HOME_CHAT_SEND_FAILURE_MESSAGE = "这句话刚刚没送到，再试试吧。";
 const HOME_CHAT_SEND_TIMEOUT_MS = 8000;
-const SCENE_OBJECT_ENTRIES = Object.entries(HOME_SCENE_OBJECTS) as Array<
-  [HomeSceneObjectAction, HomeSceneObjectMeta]
->;
-const INSTANT_OBJECT_LABELS = SCENE_OBJECT_ENTRIES.filter(
-  ([, item]) => item.interactionKind === "instant"
-)
-  .map(([, item]) => item.label)
-  .join(" / ");
-const TARGET_OBJECT_LABELS = SCENE_OBJECT_ENTRIES.filter(
-  ([, item]) => item.interactionKind === "target"
-)
-  .map(([, item]) => item.label)
-  .join(" / ");
-
-function getObjectBadgeClass(kind: HomeSceneObjectMeta["interactionKind"]) {
-  return kind === "instant"
-    ? "bg-amber-100 text-amber-800"
-    : "bg-violet-100 text-violet-800";
-}
 
 type StatusFetchResult =
   | { kind: "success" }
@@ -175,14 +161,17 @@ export default function HomeScenePage() {
   const [isHomeChatLoading, setIsHomeChatLoading] = useState(false);
   const [isHomeChatLoaded, setIsHomeChatLoaded] = useState(false);
   const [isHomeChatSending, setIsHomeChatSending] = useState(false);
+  const [isCareActionRunning, setIsCareActionRunning] = useState(false);
   const [homeChatStatusMessage, setHomeChatStatusMessage] = useState<{
     type: "error" | "info";
     message: string;
   } | null>(null);
   const chatMessagesContainerRef = useRef<HTMLDivElement | null>(null);
   const furnitureBaselineRef = useRef<PlacedFurnitureResponse[] | null>(null);
-  const isPetPanelOpen = activePetPanel === "status";
   const isHomeChatOpen = activePetPanel === "chat";
+  const isFurniturePanelOpen = isFurnitureEditMode && activePetPanel === null;
+  const isPetPanelOpen =
+    activePetPanel === "status" || (!isHomeChatOpen && !isFurniturePanelOpen);
   const currentRoomMeta =
     HOME_SCENE_ROOMS.find((room) => room.id === currentRoom) ?? HOME_SCENE_ROOMS[0];
   const statusDisplayPolicy = getHomeStatusDisplayPolicy(
@@ -222,6 +211,7 @@ export default function HomeScenePage() {
     try {
       const response = await fetch(`${API_BASE_URL}/pets/${activePetId}/status`, {
         cache: "no-store",
+        credentials: "include",
         headers: buildAuthHeaders(token),
       });
 
@@ -264,6 +254,7 @@ export default function HomeScenePage() {
     try {
       const response = await fetch(`${API_BASE_URL}/pets/${activePetId}/furniture`, {
         cache: "no-store",
+        credentials: "include",
         headers: buildAuthHeaders(token),
       });
       if (!response.ok) return;
@@ -301,6 +292,7 @@ export default function HomeScenePage() {
     try {
       const response = await fetch(`${API_BASE_URL}/pets/${activePetId}/messages`, {
         cache: "no-store",
+        credentials: "include",
         headers: buildAuthHeaders(token),
       });
 
@@ -394,6 +386,7 @@ export default function HomeScenePage() {
     try {
       const response = await fetch(`${API_BASE_URL}/pets/${pet.id}/chat`, {
         method: "POST",
+        credentials: "include",
         signal: controller.signal,
         headers: buildAuthHeaders(authToken, true),
         body: JSON.stringify({
@@ -512,6 +505,7 @@ export default function HomeScenePage() {
 
         const petResponse = await fetch(`${API_BASE_URL}/pets/${activePetId}`, {
           cache: "no-store",
+          credentials: "include",
           headers: buildAuthHeaders(storedAuthToken),
         });
 
@@ -567,6 +561,7 @@ export default function HomeScenePage() {
         try {
           const allPetsRes = await fetch(`${API_BASE_URL}/pets`, {
             cache: "no-store",
+            credentials: "include",
             headers: buildAuthHeaders(storedAuthToken),
           });
           if (allPetsRes.ok && isMounted) {
@@ -580,6 +575,7 @@ export default function HomeScenePage() {
                   try {
                     const sRes = await fetch(`${API_BASE_URL}/pets/${p.id}/status`, {
                       cache: "no-store",
+                      credentials: "include",
                       headers: buildAuthHeaders(storedAuthToken),
                     });
                     if (sRes.ok) {
@@ -622,6 +618,7 @@ export default function HomeScenePage() {
       setStatusSyncNotice(null);
       setLastStatusSyncedAt(null);
       setStatusViewState("loading");
+      setIsCareActionRunning(false);
       resetHomeChatState();
       return;
     }
@@ -677,6 +674,24 @@ export default function HomeScenePage() {
       window.cancelAnimationFrame(frameId);
     };
   }, [chatMessages, isHomeChatOpen]);
+
+  useEffect(() => {
+    if (!isPetMenuOpen) {
+      return;
+    }
+
+    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsPetMenuOpen(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isPetMenuOpen]);
 
   useEffect(() => {
     if (!sceneNotice) {
@@ -830,6 +845,7 @@ export default function HomeScenePage() {
     try {
       const response = await fetch(`${API_BASE_URL}/pets/${pet.id}/${action}`, {
         method: "POST",
+        credentials: "include",
         headers: buildAuthHeaders(authToken),
       });
 
@@ -884,6 +900,59 @@ export default function HomeScenePage() {
     setActivePetPanel(action);
   };
 
+  const handleCareAction = async (action: CareAction, label: string) => {
+    if (!pet || !authToken || isCareActionRunning) {
+      return;
+    }
+
+    setIsCareActionRunning(true);
+    setSceneNotice(null);
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/pets/${pet.id}/${action}`, {
+        method: "POST",
+        credentials: "include",
+        headers: buildAuthHeaders(authToken),
+      });
+
+      if (!response.ok) {
+        setSceneNotice({
+          scope: "scene",
+          tone: "error",
+          text: await getResponseErrorMessage(
+            response,
+            `${label} 没成功，再试试吧。`
+          ),
+        });
+        return;
+      }
+
+      const data: unknown = await response.json();
+      if (
+        data &&
+        typeof data === "object" &&
+        "status" in data &&
+        isPetStatus((data as { status?: unknown }).status)
+      ) {
+        applyStatusSnapshot((data as { status: PetStatus }).status);
+      }
+
+      setSceneNotice({
+        scope: "scene",
+        tone: "success",
+        text: `${label} 已经帮你做好了。`,
+      });
+    } catch {
+      setSceneNotice({
+        scope: "scene",
+        tone: "error",
+        text: "刚刚没连上，再试试吧。",
+      });
+    } finally {
+      setIsCareActionRunning(false);
+    }
+  };
+
   const handleHomeChatSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     void sendHomeChatMessage();
@@ -903,474 +972,235 @@ export default function HomeScenePage() {
     void sendHomeChatMessage();
   };
 
+  const activeCompanionTab: HomeCompanionTab = isHomeChatOpen
+    ? "chat"
+    : isFurniturePanelOpen
+      ? "furniture"
+      : "status";
+
+  const handleCompanionTabChange = (tab: HomeCompanionTab) => {
+    setIsPetMenuOpen(false);
+
+    if (tab === "status") {
+      setActivePetPanel("status");
+      return;
+    }
+
+    if (tab === "chat") {
+      setIsHomeChatLoaded(false);
+      setActivePetPanel("chat");
+      return;
+    }
+
+    setActivePetPanel(null);
+    if (!isFurnitureEditMode) {
+      void handleFurnitureEditToggle();
+    }
+  };
+
   return (
-    <main className="min-h-screen bg-white px-6 py-12 text-gray-900">
-      <div className="mx-auto max-w-7xl">
-        <AppHeaderNav />
-
-        <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <p className="text-sm font-medium text-amber-700">
-              Phase 3 · 2D 家庭场景
-            </p>
-            <h1 className="mt-2 text-3xl font-bold sm:text-4xl">
-              家庭场景主页
-            </h1>
-            <p className="mt-3 max-w-3xl text-base leading-7 text-gray-600">
-              这里是宠物的家庭场景，可以直接互动、聊天和调整家具。
-            </p>
-          </div>
-
-          {authToken && pet ? (
-            <PetSwitcher
-              currentPetId={pet.id}
-              authToken={authToken}
-              onPetSwitch={handlePetSwitch}
-            />
-          ) : null}
-        </div>
-
-        <AuthSessionNotice authToken={authToken} className="mb-8" />
+    <main className={ui.pageShell}>
+      <div className={ui.pageInner}>
+        <AppHeaderNav
+          currentPetName={pet?.petName ?? null}
+          currentPetMeta={pet?.species ?? null}
+        />
 
         {!isLoaded ? (
-          <section className={`${ui.cardSoft} p-6 text-sm text-gray-600`}>
-            正在加载家庭场景...
-          </section>
+          <SkeletonBlock className="h-32" label="正在打开宠物小窝" />
         ) : null}
 
         {isLoaded && !authToken ? (
-          <section className={`${ui.cardGhost} p-8`}>
-            <h2 className="text-2xl font-semibold text-gray-900">请先登录</h2>
-            <p className="mt-3 text-sm leading-7 text-gray-600">
-              {pageStatusNotice?.text || LOGIN_REQUIRED_MESSAGE}
-            </p>
-            <Link
-              href="/login"
-              className={`mt-6 ${ui.buttonPrimary}`}
-            >
-              去登录
-            </Link>
-          </section>
+          <EmptyState
+            title="请先登录"
+            description={pageStatusNotice?.text || LOGIN_REQUIRED_MESSAGE}
+            action={
+              <Link href="/login" className={ui.buttonPrimary}>
+                去登录
+              </Link>
+            }
+          />
         ) : null}
 
         {isLoaded && authToken && !pet ? (
-          <section className={`${ui.cardGhost} p-8`}>
-            <h2 className="text-2xl font-semibold text-gray-900">
-              还没有家庭场景主角
-            </h2>
-            <p className="mt-3 text-sm leading-7 text-gray-600">
-              {pageStatusNotice?.text || "先创建宠物，再回来体验家庭场景。"}
-            </p>
-            <Link
-              href="/create-pet"
-              className={`mt-6 ${ui.buttonPrimary}`}
-            >
-              去创建宠物
-            </Link>
-          </section>
+          <EmptyState
+            title="还没有小窝主人"
+            description={pageStatusNotice?.text || MISSING_PET_MESSAGE}
+            action={
+              <Link href="/create-pet" className={ui.buttonPrimary}>
+                创建宠物
+              </Link>
+            }
+          />
         ) : null}
 
         {isLoaded && authToken && pet ? (
-          <div className="grid gap-6 xl:grid-cols-[1.25fr_0.95fr]">
-            <section className={`${ui.cardWarm} p-6`}>
-              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <p className="text-sm font-medium text-amber-700">
-                    当前宠物：{pet.petName}
-                  </p>
-                  {lastStatusSyncedAt ? (
-                    <p className="mt-2 text-xs text-gray-500">
-                      {buildHomeStatusFreshnessText(lastStatusSyncedAt)}
-                    </p>
-                  ) : null}
-                  <h2 className="mt-1 text-2xl font-semibold text-gray-900">
-                    俯视角家庭地图
-                  </h2>
-                </div>
+          <>
+            <div className="mb-4 flex justify-end">
+              <PetSwitcher
+                currentPetId={pet.id}
+                authToken={authToken}
+                onPetSwitch={handlePetSwitch}
+              />
+            </div>
 
-                {statusDisplayPolicy.showSummaryBadge ? (
-                  <div className={`${ui.chip} px-4 py-2`}>
-                    {getHomeStatusSummaryText(status, statusViewState)}
-                  </div>
-                ) : null}
-              </div>
+            <HomeHero
+              petName={pet.petName}
+              roomLabel={currentRoomMeta.label}
+              status={status}
+              freshnessText={
+                lastStatusSyncedAt
+                  ? buildHomeStatusFreshnessText(lastStatusSyncedAt)
+                  : null
+              }
+            />
 
-              <PetHomeScene
+            <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_390px] xl:grid-cols-[minmax(0,1fr)_430px]">
+              <HomeSceneShell
+                petName={pet.petName}
                 currentRoom={currentRoom}
-                isEditMode={isFurnitureEditMode}
-                pets={pets.length > 0 ? pets.map((p) => ({
-                  id: p.id,
-                  petName: p.petName,
-                  petSpecies: p.species,
-                  petStatus: petStatuses.get(p.id) ?? null,
-                  recentSocialEmotion: normalizeHomeSocialEmotion(
-                    petStatuses.get(p.id)?.socialEmotion ?? null
-                  ),
-                })) : [{
-                  id: pet.id,
-                  petName: pet.petName,
-                  petSpecies: pet.species,
-                  petStatus: status,
-                  recentSocialEmotion: normalizeHomeSocialEmotion(
-                    status?.socialEmotion ?? null
-                  ),
-                }]}
-                placedFurniture={placedFurniture}
-                onPlacedFurnitureChange={handleFurnitureDraftChange}
-                onEditError={handleFurnitureEditError}
-                onAction={(action) => {
-                  void handleSceneAction(action);
+                statusSummary={
+                  statusDisplayPolicy.showSummaryBadge
+                    ? getHomeStatusSummaryText(status, statusViewState)
+                    : null
+                }
+                isFurnitureEditMode={isFurnitureEditMode}
+                isFurnitureLayoutSaving={isFurnitureLayoutSaving}
+                isPetMenuOpen={isPetMenuOpen}
+                onRoomChange={setCurrentRoom}
+                onSaveFurniture={() => {
+                  void handleFurnitureEditToggle();
                 }}
+                onClosePetMenu={() => setIsPetMenuOpen(false)}
+                onPetMenuAction={handlePetMenuAction}
+                onOpenFurniture={() => {
+                  setIsPetMenuOpen(false);
+                  setActivePetPanel(null);
+                  if (!isFurnitureEditMode) {
+                    void handleFurnitureEditToggle();
+                  }
+                }}
+                onOpenChat={() => {
+                  setIsPetMenuOpen(false);
+                  setIsHomeChatLoaded(false);
+                  setActivePetPanel("chat");
+                }}
+                sceneNode={
+                  <PetHomeScene
+                    currentRoom={currentRoom}
+                    isEditMode={isFurnitureEditMode}
+                    pets={
+                      pets.length > 0
+                        ? pets.map((p) => ({
+                            id: p.id,
+                            petName: p.petName,
+                            petSpecies: p.species,
+                            petColor: p.color,
+                            petSize: p.size,
+                            petPersonality: p.personality,
+                            petSpecialTraits: p.specialTraits,
+                            petStatus: petStatuses.get(p.id) ?? null,
+                            recentSocialEmotion: normalizeHomeSocialEmotion(
+                              petStatuses.get(p.id)?.socialEmotion ?? null
+                            ),
+                          }))
+                        : [
+                            {
+                              id: pet.id,
+                              petName: pet.petName,
+                              petSpecies: pet.species,
+                              petColor: pet.color,
+                              petSize: pet.size,
+                              petPersonality: pet.personality,
+                              petSpecialTraits: pet.specialTraits,
+                              petStatus: status,
+                              recentSocialEmotion: normalizeHomeSocialEmotion(
+                                status?.socialEmotion ?? null
+                              ),
+                            },
+                          ]
+                    }
+                    placedFurniture={placedFurniture}
+                    onPlacedFurnitureChange={handleFurnitureDraftChange}
+                    onEditError={handleFurnitureEditError}
+                    onAction={(action) => {
+                      void handleSceneAction(action);
+                    }}
+                  />
+                }
+                notices={
+                  <>
+                    {statusDisplayPolicy.showSyncNotice && statusSyncNotice ? (
+                      <div
+                        className={`rounded-[20px] border px-4 py-3 text-sm leading-6 ${getHomeStatusSyncNoticeClassName(statusSyncNotice.tone)}`}
+                      >
+                        {statusSyncNotice.text}
+                      </div>
+                    ) : null}
+                    {sceneNotice ? (
+                      <div
+                        className={`rounded-[20px] border px-4 py-3 text-sm leading-6 ${getHomeSceneNoticeClassName(sceneNotice.tone)}`}
+                      >
+                        {sceneNotice.text}
+                      </div>
+                    ) : null}
+                  </>
+                }
               />
 
-              <div className={`${ui.cardSoft} mt-4 bg-white/85 p-3 shadow-sm`}>
-                <div className="flex flex-wrap gap-2">
-                  {HOME_SCENE_ROOMS.map((room) => (
-                    <button
-                      key={room.id}
-                      type="button"
-                      onClick={() => setCurrentRoom(room.id)}
-                    className={`rounded-full px-4 py-2 text-sm font-medium transition ${
-                      room.id === currentRoom
-                        ? "bg-stone-900 text-white shadow-sm"
-                        : "bg-[#f6ebda] text-[#7b4b22] hover:bg-[#eedec5]"
-                    }`}
-                  >
-                      {room.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                {SCENE_OBJECT_ENTRIES.map(([action, item]) => (
-                  <div
-                    key={action}
-                    className={`${ui.cardSoft} bg-white/80 p-4 text-sm text-gray-600 shadow-sm`}
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="font-medium text-gray-900">{item.label}</p>
-                      <span
-                        className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${getObjectBadgeClass(item.interactionKind)}`}
-                      >
-                        {item.badgeLabel}
-                      </span>
-                    </div>
-                    <p className="mt-2 leading-6">{item.panelDescription}</p>
-                  </div>
-                ))}
-              </div>
-
-              {statusDisplayPolicy.showSyncNotice && statusSyncNotice ? (
-                <div
-                  className={`mt-3 rounded-2xl border px-4 py-3 text-sm leading-6 ${getHomeStatusSyncNoticeClassName(statusSyncNotice.tone)}`}
-                >
-                  {statusSyncNotice.text}
-                </div>
-              ) : null}
-
-              {sceneNotice ? (
-                <div
-                  className={`mt-4 rounded-2xl border px-4 py-3 text-sm leading-6 ${getHomeSceneNoticeClassName(sceneNotice.tone)}`}
-                >
-                  {sceneNotice.text}
-                </div>
-              ) : null}
-            </section>
-
-            <div className="space-y-6">
-              <section className={`${ui.card} p-6`}>
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <h2 className="text-xl font-semibold text-gray-900">
-                      场景说明
-                    </h2>
-                    <p className="mt-2 text-sm leading-6 text-gray-600">
-                      点击宠物会先展开互动菜单，再选择查看状态或直接打开场景内聊天窗口；固定物件则分成两类：立即互动点会直接调用接口，行为目标点只负责解释宠物当前会往哪里移动。
-                    </p>
-                  </div>
-
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        void handleFurnitureEditToggle();
-                      }}
-                      disabled={isFurnitureLayoutSaving}
-                      className={`rounded-xl px-4 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-60 ${
-                        isFurnitureEditMode
-                          ? "bg-stone-900 text-white hover:bg-stone-700"
-                          : "border border-[#d7c6b1] bg-[#f6ebda] text-[#7b4b22] hover:bg-[#eedec5]"
-                      }`}
-                    >
-                      {isFurnitureLayoutSaving
-                        ? "保存中..."
-                        : isFurnitureEditMode
-                          ? "退出并保存布置"
-                          : "进入布置模式"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setActivePetPanel((currentPanel) =>
-                          currentPanel === "status" ? null : "status"
-                        )
-                      }
-                      className={`${ui.buttonOutline} px-4 py-2`}
-                    >
-                      {isPetPanelOpen ? "收起状态面板" : "打开状态面板"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsPetMenuOpen(false);
-                        if (isHomeChatOpen) {
-                          setActivePetPanel(null);
-                          return;
-                        }
-                        setIsHomeChatLoaded(false);
-                        setActivePetPanel("chat");
-                      }}
-                      className={`${ui.buttonPrimary} px-4 py-2`}
-                    >
-                      {isHomeChatOpen ? "收起聊天窗口" : `和 ${pet.petName} 聊天`}
-                    </button>
-                  </div>
-                </div>
-
-                <div className={`${ui.cardSoft} mt-4 p-4 text-sm leading-7 text-gray-600`}>
-                  <p>
-                    房间切换：通过场景下方标签在客厅、卧室、厨房之间切换，当前显示 {currentRoomMeta.label}。
-                  </p>
-                  <p>
-                    行为规则：饥饿优先找食盆，口渴优先找水盆，疲惫优先找床，否则在房间里巡视。
-                  </p>
-                </div>
-
-                <div className="mt-4 grid gap-3 text-sm leading-7 text-gray-600 md:grid-cols-2">
-                  <div className={`${ui.cardSoft} p-4`}>
-                    <p className="font-medium text-gray-900">立即互动</p>
-                    <p className="mt-2">
-                      {INSTANT_OBJECT_LABELS}
-                      会在点击后马上调用后端接口，属于直接结算当前动作的交互点。
-                    </p>
-                  </div>
-                  <div className={`${ui.cardSoft} p-4`}>
-                    <p className="font-medium text-gray-900">行为目标点</p>
-                    <p className="mt-2">
-                      {TARGET_OBJECT_LABELS}
-                      当前只负责表达宠物的移动目标和休息语义，不会立刻写入新的数值结果。
-                    </p>
-                  </div>
-                </div>
-              </section>
-
-              {isPetMenuOpen ? (
-                <section className={`${ui.card} p-6`}>
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <h2 className="text-xl font-semibold text-gray-900">
-                        宠物互动菜单
-                      </h2>
-                      <p className="mt-2 text-sm leading-6 text-gray-600">
-                        已选中 {pet.petName}。当前先通过菜单决定要查看状态，还是直接展开场景内聊天窗口。
-                      </p>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => setIsPetMenuOpen(false)}
-                      className={`${ui.buttonOutline} px-4 py-2`}
-                    >
-                      收起菜单
-                    </button>
-                  </div>
-
-                  <div className="mt-4 grid gap-3">
-                    {HOME_PET_INTERACTION_MENU_ITEMS.map((item) => (
-                      <button
-                        key={item.action}
-                        type="button"
-                        onClick={() => handlePetMenuAction(item.action)}
-                        className={`rounded-2xl px-4 py-4 text-left transition ${
-                          item.action === "status"
-                            ? "border border-amber-200 bg-amber-50 hover:border-amber-300 hover:bg-amber-100"
-                            : "border border-gray-200 bg-gray-50 hover:border-gray-300 hover:bg-gray-100"
-                        }`}
-                      >
-                          <p
-                            className={`text-sm font-semibold ${
-                              item.action === "status"
-                                ? "text-amber-900"
-                                : "text-gray-900"
-                            }`}
-                          >
-                            {item.label}
-                          </p>
-                          <p
-                            className={`mt-2 text-sm leading-6 ${
-                              item.action === "status"
-                                ? "text-amber-800"
-                                : "text-gray-600"
-                            }`}
-                          >
-                            {item.description}
-                          </p>
-                      </button>
-                    ))}
-                  </div>
-                </section>
-              ) : null}
-
-              {isPetPanelOpen ? (
-                <PetStatusPanel
-                  petId={pet.id}
-                  authToken={authToken}
-                  status={status}
-                  statusViewState={statusViewState}
-                  onStatusChange={applyStatusSnapshot}
-                />
-              ) : isHomeChatOpen ? (
-                <section className={`${ui.card} p-6`}>
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <h2 className="text-xl font-semibold text-gray-900">
-                        场景内聊天窗口
-                      </h2>
-                      <p className="mt-2 text-sm leading-6 text-gray-600">
-                        你正在家庭场景里直接和 {pet.petName} 聊天，不需要再跳转到独立页面。
-                      </p>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => setActivePetPanel(null)}
-                      className={`${ui.buttonOutline} px-4 py-2`}
-                    >
-                      收起聊天窗口
-                    </button>
-                  </div>
-
-                  {homeChatStatusMessage ? (
-                    <div
-                      className={`mt-4 rounded-2xl border px-4 py-3 text-sm leading-6 ${
-                        homeChatStatusMessage.type === "error"
-                        ? ui.noticeError
-                        : ui.noticeInfo
-                      }`}
-                    >
-                      {homeChatStatusMessage.message}
-                    </div>
-                  ) : null}
-
-                  <div
-                    ref={chatMessagesContainerRef}
-                    className={`mt-4 h-[320px] overflow-y-auto ${ui.cardSoft} p-4`}
-                  >
-                    {isHomeChatLoading ? (
-                      <div className="flex h-full items-center justify-center rounded-2xl border border-dashed border-gray-200 bg-white/70 px-6 text-center text-sm leading-6 text-gray-500">
-                        正在读取 {pet.petName} 的聊天记录，请稍等一下。
-                      </div>
-                    ) : chatMessages.length === 0 ? (
-                      <div className="flex h-full items-center justify-center rounded-2xl border border-dashed border-gray-200 bg-white/70 px-6 text-center text-sm leading-6 text-gray-500">
-                        还没有聊天记录，先和 {pet.petName} 打个招呼吧。
-                      </div>
-                    ) : (
-                      <div className="space-y-3">
-                        {chatMessages.map((message) => (
-                          <div
-                            key={message.id}
-                            className={`flex ${
-                              message.role === "user"
-                                ? "justify-end"
-                                : "justify-start"
-                            }`}
-                          >
-                            <div
-                              className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-6 shadow-sm ${
-                                message.role === "user"
-                                  ? "bg-gray-900 text-white"
-                                  : "bg-white text-gray-700"
-                              }`}
-                            >
-                              <p className="mb-1 text-xs font-medium opacity-70">
-                                {message.role === "user" ? "你" : pet.petName}
-                              </p>
-                              <p>{message.content}</p>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  <form
+              <HomeSidebarTabs
+                activeTab={activeCompanionTab}
+                roomLabel={currentRoomMeta.label}
+                onTabChange={handleCompanionTabChange}
+                statusPanel={
+                  <HomeStatusPanel
+                    status={status}
+                    statusViewState={statusViewState}
+                    isActing={isCareActionRunning}
+                    onCareAction={(action, label) => {
+                      void handleCareAction(action, label);
+                    }}
+                  />
+                }
+                chatPanel={
+                  <HomeChatPanel
+                    petName={pet.petName}
+                    messages={chatMessages}
+                    inputValue={chatInputValue}
+                    isLoading={isHomeChatLoading}
+                    isSending={isHomeChatSending}
+                    canSend={canSendHomeChatMessage}
+                    statusMessage={homeChatStatusMessage}
+                    messagesRef={chatMessagesContainerRef}
+                    onInputChange={setChatInputValue}
                     onSubmit={handleHomeChatSubmit}
-                    className={`mt-4 ${ui.cardSoft} bg-white p-4`}
-                  >
-                    <label
-                      htmlFor="home-scene-chat-message"
-                      className="mb-2 block text-sm font-medium text-gray-800"
-                    >
-                      对 {pet.petName} 说点什么
-                    </label>
-                    <div className="flex flex-col gap-3 sm:flex-row">
-                      <input
-                        id="home-scene-chat-message"
-                        type="text"
-                        value={chatInputValue}
-                        onChange={(event) => setChatInputValue(event.target.value)}
-                        onKeyDown={handleHomeChatInputKeyDown}
-                        placeholder="例如：今天想做什么？"
-                        disabled={isHomeChatLoading || isHomeChatSending}
-                        className={`flex-1 ${ui.input}`}
-                      />
-                      <button
-                        type="submit"
-                        disabled={!canSendHomeChatMessage}
-                        className={ui.buttonPrimary}
-                      >
-                        {isHomeChatSending ? "发送中..." : "发送"}
-                      </button>
-                    </div>
-                  </form>
-                </section>
-              ) : (
-                <section className={`${ui.cardGhost} p-6 text-sm leading-7 text-gray-500`}>
-                  点击场景里的宠物会先弹出互动菜单；你可以从菜单里选择查看状态，或直接打开场景内聊天窗口。
-                </section>
-              )}
-
-              <section className={`${ui.card} p-6`}>
-                <h2 className="text-xl font-semibold text-gray-900">
-                  独立页面入口
-                </h2>
-                <p className="mt-2 text-sm leading-6 text-gray-600">
-                  家庭场景已经支持快捷查看状态和直接聊天，其它能力继续保持独立页面入口。
-                </p>
-                <div className="mt-4 flex flex-wrap gap-3">
-                  <Link
-                    href="/chat"
-                    className={ui.buttonPrimary}
-                  >
-                    去聊天窗口
-                  </Link>
-                  <Link
-                    href="/my-pet"
-                    className={ui.buttonSecondary}
-                  >
-                    查看宠物资料
-                  </Link>
-                  <Link
-                    href="/social"
-                    className={ui.buttonOutline}
-                  >
-                    去站内社交
-                  </Link>
-                </div>
-              </section>
+                    onInputKeyDown={handleHomeChatInputKeyDown}
+                  />
+                }
+                furniturePanel={
+                  <HomeFurniturePanel
+                    isEditMode={isFurnitureEditMode}
+                    isSaving={isFurnitureLayoutSaving}
+                    onToggleEdit={() => {
+                      void handleFurnitureEditToggle();
+                    }}
+                  />
+                }
+              />
             </div>
-          </div>
+
+            <div className="mt-6 flex flex-wrap gap-2 text-sm">
+              <Link href="/chat" className={ui.buttonOutline}>
+                去聊天页
+              </Link>
+              <Link href="/my-pet" className={ui.buttonOutline}>
+                看看宠物资料
+              </Link>
+              <Link href="/social" className={ui.buttonOutline}>
+                去社交看看
+              </Link>
+            </div>
+          </>
         ) : null}
       </div>
     </main>

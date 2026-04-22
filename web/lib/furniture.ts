@@ -49,6 +49,7 @@ export const fetchPlacedFurniture = async (
   token: string
 ): Promise<PlacedFurniture[]> => {
   const res = await fetch(`${API_BASE_URL}/pets/${petId}/furniture`, {
+    credentials: "include",
     headers: buildAuthHeaders(token),
   });
   if (!res.ok) throw new Error("获取已放置家具失败");
@@ -68,6 +69,7 @@ export const placeFurniture = async (
 ): Promise<PlacedFurniture> => {
   const res = await fetch(`${API_BASE_URL}/pets/${petId}/furniture`, {
     method: "POST",
+    credentials: "include",
     headers: buildAuthHeaders(token, true),
     body: JSON.stringify({
       template_id: templateId,
@@ -99,6 +101,7 @@ export const moveFurniture = async (
     `${API_BASE_URL}/pets/${petId}/furniture/${placedId}`,
     {
       method: "PATCH",
+      credentials: "include",
       headers: buildAuthHeaders(token, true),
       body: JSON.stringify({
         room,
@@ -122,6 +125,7 @@ export const removeFurniture = async (
     `${API_BASE_URL}/pets/${petId}/furniture/${placedId}`,
     {
       method: "DELETE",
+      credentials: "include",
       headers: buildAuthHeaders(token),
     }
   );

@@ -118,7 +118,7 @@ export default function FurniturePage() {
 
   if (error) {
     return (
-      <main className="flex min-h-screen flex-col items-center justify-center p-6">
+      <main className="flex min-h-dvh flex-col items-center justify-center px-4 py-6 sm:px-6 sm:py-8">
         <p className="mb-4 text-sm text-red-600">{error}</p>
         <Link href="/home" className="text-amber-700 underline">
           返回主页
@@ -130,8 +130,8 @@ export default function FurniturePage() {
   const categories = Array.from(new Set(templates.map((template) => template.category)));
 
   return (
-    <main className="min-h-screen bg-[#fff7ed] p-6">
-      <div className="mx-auto max-w-2xl">
+    <main className="min-h-dvh bg-[#fff7ed] px-4 py-6 sm:px-6 sm:py-8 lg:px-8 lg:py-10">
+      <div className="mx-auto w-full max-w-2xl">
         <AppHeaderNav compact />
         <div className="mb-6 flex items-center gap-3">
           <h1 className="text-xl font-bold text-amber-900">家具编辑</h1>

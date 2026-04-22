@@ -10,14 +10,14 @@ export const metadata: Metadata = {
     template: "%s | Pet Agent Social",
   },
   description:
-    "Pet Agent Social is an AI pet web app with SecondMe sign-in, pet chat, live status, and pet-to-pet social interactions.",
+    "Pet Agent Social is an AI pet web app with local and SecondMe sign-in, pet chat, live status, and pet-to-pet social interactions.",
   alternates: {
     canonical: "/",
   },
   openGraph: {
     title: "Pet Agent Social",
     description:
-      "Pet Agent Social is an AI pet web app with SecondMe sign-in, pet chat, live status, and pet-to-pet social interactions.",
+      "Pet Agent Social is an AI pet web app with local and SecondMe sign-in, pet chat, live status, and pet-to-pet social interactions.",
     siteName: "Pet Agent Social",
     type: "website",
     url: "/",

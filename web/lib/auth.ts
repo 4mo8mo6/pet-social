@@ -1,16 +1,21 @@
+import { API_BASE_URL } from "./constants";
+
 export const SECONDME_STATE_COOKIE_NAME = "pet-agent-social-secondme-state";
 export const SECONDME_AUTH_RESULT_COOKIE_NAME =
   "pet-agent-social-secondme-login";
 
 const AUTH_TOKEN_STORAGE_KEY = "pet-agent-social:auth-token";
+const AUTH_SESSION_STORAGE_KEY = "pet-agent-social:auth-session";
 const AUTH_USER_EMAIL_STORAGE_KEY = "pet-agent-social:auth-user-email";
 export const AUTH_COOKIE_NAME = "pet-agent-social-auth";
+export const AUTH_SESSION_MARKER = "cookie-session";
 export const PROTECTED_ROUTE_PREFIXES = [
   "/chat",
   "/community",
   "/create-pet",
   "/home",
   "/my-pet",
+  "/my-pets",
   "/shop",
   "/social",
 ] as const;
@@ -32,14 +37,6 @@ const readCookieValue = (name: string) => {
   return decodeURIComponent(cookie.slice(cookiePrefix.length));
 };
 
-const writeAuthCookie = (token: string) => {
-  if (typeof document === "undefined") {
-    return;
-  }
-
-  document.cookie = `${AUTH_COOKIE_NAME}=${encodeURIComponent(token)}; Path=/; SameSite=Lax`;
-};
-
 const clearAuthCookie = () => {
   if (typeof document === "undefined") {
     return;
@@ -49,7 +46,6 @@ const clearAuthCookie = () => {
 };
 
 export type TemporarySecondMeAuthResult = {
-  token: string;
   email: string;
 };
 
@@ -58,19 +54,18 @@ export const readStoredAuthToken = () => {
     return null;
   }
 
-  const storedToken = window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
-  const cookieToken = readCookieValue(AUTH_COOKIE_NAME);
+  window.localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
 
-  if (storedToken?.trim()) {
-    if (cookieToken !== storedToken) {
-      writeAuthCookie(storedToken);
-    }
-    return storedToken;
+  const sessionMarker = window.localStorage.getItem(AUTH_SESSION_STORAGE_KEY);
+
+  if (sessionMarker?.trim()) {
+    return AUTH_SESSION_MARKER;
   }
 
-  if (cookieToken?.trim()) {
-    window.localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, cookieToken);
-    return cookieToken;
+  const legacyCookieToken = readCookieValue(AUTH_COOKIE_NAME);
+
+  if (legacyCookieToken?.trim()) {
+    clearAuthCookie();
   }
 
   return null;
@@ -88,14 +83,14 @@ export const readStoredAuthUserEmail = () => {
 
 export const hasStoredAuthToken = () => readStoredAuthToken() !== null;
 
-export const storeAuthToken = (token: string, email: string) => {
+export const storeAuthToken = (_token: string, email: string) => {
   if (typeof window === "undefined") {
     return;
   }
 
-  window.localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, token);
+  window.localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+  window.localStorage.setItem(AUTH_SESSION_STORAGE_KEY, AUTH_SESSION_MARKER);
   window.localStorage.setItem(AUTH_USER_EMAIL_STORAGE_KEY, email);
-  writeAuthCookie(token);
 };
 
 export const clearStoredAuth = () => {
@@ -104,6 +99,7 @@ export const clearStoredAuth = () => {
   }
 
   window.localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+  window.localStorage.removeItem(AUTH_SESSION_STORAGE_KEY);
   window.localStorage.removeItem(AUTH_USER_EMAIL_STORAGE_KEY);
   clearAuthCookie();
 };
@@ -136,13 +132,10 @@ export const readTemporarySecondMeAuthResult =
       ) as Record<string, unknown>;
 
       if (
-        typeof parsedValue.token === "string" &&
-        parsedValue.token &&
         typeof parsedValue.email === "string" &&
         parsedValue.email
       ) {
         return {
-          token: parsedValue.token,
           email: parsedValue.email,
         };
       }
@@ -162,13 +155,26 @@ export const clearTemporarySecondMeAuthResult = () => {
 };
 
 export const buildAuthHeaders = (token: string, includeJson = false) => {
-  const headers: Record<string, string> = {
-    Authorization: `Bearer ${token}`,
-  };
+  void token;
+  const headers: Record<string, string> = {};
 
   if (includeJson) {
     headers["Content-Type"] = "application/json";
   }
 
   return headers;
+};
+
+export const withAuthCredentials = (init: RequestInit = {}): RequestInit => ({
+  ...init,
+  credentials: "include",
+});
+
+export const logoutCurrentSession = async () => {
+  await fetch(`${API_BASE_URL}/auth/logout`, withAuthCredentials({
+    method: "POST",
+    headers: buildAuthHeaders(AUTH_SESSION_MARKER),
+    cache: "no-store",
+  }));
+  clearStoredAuth();
 };

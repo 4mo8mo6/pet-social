@@ -30,8 +30,8 @@ export function PublicSiteShell({
   children,
 }: PublicSiteShellProps) {
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(251,191,36,0.24),_transparent_26%),radial-gradient(circle_at_top_right,_rgba(16,185,129,0.18),_transparent_24%),linear-gradient(180deg,_#fffdf7_0%,_#ffffff_46%,_#f8fafc_100%)] text-slate-950">
-      <div className="mx-auto max-w-6xl px-6 pb-16 pt-6 sm:px-8 lg:px-10">
+    <main className="min-h-dvh bg-[radial-gradient(circle_at_top_left,_rgba(251,191,36,0.24),_transparent_26%),radial-gradient(circle_at_top_right,_rgba(16,185,129,0.18),_transparent_24%),linear-gradient(180deg,_#fffdf7_0%,_#ffffff_46%,_#f8fafc_100%)] text-slate-950">
+      <div className="mx-auto w-full max-w-6xl px-4 pb-10 pt-4 sm:px-6 sm:pb-14 sm:pt-6 lg:px-8">
         <header className="mb-12 flex flex-col gap-4 rounded-[30px] border border-white/80 bg-white/80 p-4 shadow-[0_24px_80px_-42px_rgba(15,23,42,0.45)] backdrop-blur sm:flex-row sm:items-center sm:justify-between">
           <Link
             href="/"
@@ -85,7 +85,7 @@ export function PublicSiteShell({
               <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
                 This website is the public-facing overview for Pet Agent Social,
                 including support and privacy information for the current
-                SecondMe-connected preview.
+                local and SecondMe-connected preview.
               </p>
             </div>
 
@@ -106,7 +106,7 @@ export function PublicSiteShell({
                 href="/login"
                 className="rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700"
               >
-                Sign In With SecondMe
+                Launch App
               </Link>
             </div>
           </div>

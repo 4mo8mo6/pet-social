@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { buildAuthHeaders, readStoredAuthToken } from "../../lib/auth";
+import { API_BASE_URL } from "../../lib/constants";
 import {
   CATEGORY_LABELS,
   SPRITE_EMOJI,
@@ -11,8 +12,6 @@ import {
 } from "../../lib/furniture";
 import { AppHeaderNav } from "../../lib/AppHeaderNav";
 import { ui } from "../../lib/ui";
-
-const API_BASE_URL = "http://localhost:8000";
 
 type ShopInventoryItem = {
   id: number;
@@ -160,6 +159,7 @@ export default function ShopPage() {
       try {
         const response = await fetch(`${API_BASE_URL}/shop`, {
           cache: "no-store",
+          credentials: "include",
           headers: buildAuthHeaders(token),
         });
 
@@ -198,6 +198,7 @@ export default function ShopPage() {
     try {
       const response = await fetch(`${API_BASE_URL}/shop/purchase`, {
         method: "POST",
+        credentials: "include",
         headers: buildAuthHeaders(token, true),
         body: JSON.stringify({ template_id: templateId }),
       });
@@ -240,8 +241,8 @@ export default function ShopPage() {
   };
 
   return (
-    <main className="min-h-screen bg-[#fff7ed] p-6 text-gray-900">
-      <div className="mx-auto max-w-5xl">
+    <main className="min-h-dvh bg-[#fff7ed] px-4 py-6 text-gray-900 sm:px-6 sm:py-8 lg:px-8 lg:py-10">
+      <div className="mx-auto w-full max-w-5xl">
         <AppHeaderNav />
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <div>

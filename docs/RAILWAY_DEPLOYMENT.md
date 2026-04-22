@@ -1,6 +1,6 @@
 # Railway Deployment
 
-Updated: 2026-04-01
+Updated: 2026-04-21
 
 Chinese step-by-step version:
 
@@ -13,14 +13,15 @@ If your Railway account can only create 2 services, use:
 This is the simplest production deployment path for the current SecondMe app
 submission track.
 
-Use one Railway project with 4 services:
+Use one Railway project with 3 required services:
 
 1. `web`
 2. `api`
 3. `Postgres`
-4. `Redis`
 
 This keeps the current monorepo structure and does not require MCP release work.
+Redis is no longer required for the current runtime; keep it as an optional
+future cache or queue service only if you decide to wire business code to it.
 
 ## 1. Service layout
 
@@ -42,10 +43,6 @@ This keeps the current monorepo structure and does not require MCP release work.
 ### `Postgres`
 
 - Add a managed Railway Postgres service
-
-### `Redis`
-
-- Add a managed Railway Redis service
 
 ---
 
@@ -85,7 +82,6 @@ API_HOST=0.0.0.0
 CORS_ALLOWED_ORIGINS=https://<your-web-domain>
 
 DATABASE_URL=<your-railway-postgres-connection-url>
-REDIS_URL=<your-railway-redis-connection-url>
 
 SECONDME_API_BASE_URL=https://api.mindverse.com/gate/lab
 SECONDME_CLIENT_ID=<your-secondme-client-id>
@@ -103,7 +99,8 @@ Notes:
   directly.
 - When `DATABASE_URL` is present, `POSTGRES_HOST` / `POSTGRES_PORT` /
   `POSTGRES_DB` / `POSTGRES_USER` / `POSTGRES_PASSWORD` can be omitted.
-- When `REDIS_URL` is present, `REDIS_HOST` / `REDIS_PORT` can be omitted.
+- `REDIS_URL` / `REDIS_HOST` / `REDIS_PORT` are reserved for future cache or
+  queue work. The current API runtime does not read or write Redis.
 - `CORS_ALLOWED_ORIGINS` must point at the deployed `web` domain, otherwise the
   browser app cannot call the API with cookies.
 
@@ -112,11 +109,10 @@ Notes:
 ## 4. Recommended deployment order
 
 1. Deploy `Postgres`
-2. Deploy `Redis`
-3. Deploy `api`
-4. Open `https://<your-api-domain>/health` and confirm it returns `status=ok`
-5. Deploy `web`
-6. Open:
+2. Deploy `api`
+3. Open `https://<your-api-domain>/health` and confirm it returns `status=ok`
+4. Deploy `web`
+5. Open:
    - `https://<your-web-domain>/`
    - `https://<your-web-domain>/support`
    - `https://<your-web-domain>/privacy`
@@ -160,6 +156,8 @@ Once both services are working over HTTPS:
 Current conclusion:
 
 - Railway is the simplest path for this repo right now
-- the repo is now prepared for Railway-style `DATABASE_URL`, `REDIS_URL`,
-  production CORS, and production API startup
+- the repo is now prepared for Railway-style `DATABASE_URL`, production CORS,
+  and production API startup
+- Redis-related environment variables remain reserved, but Redis is not a
+  required service for this build
 - actual SecondMe listing submission still waits on real HTTPS deployment
