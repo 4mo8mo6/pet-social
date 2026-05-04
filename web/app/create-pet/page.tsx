@@ -1,18 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
+
 import {
   buildAuthHeaders,
   clearStoredAuth,
   readStoredAuthToken,
 } from "../../lib/auth";
+import { API_BASE_URL } from "../../lib/constants";
 import {
-  API_BASE_URL,
-} from "../../lib/constants";
-import {
+  type ApiPet,
   EMPTY_PET,
   clearLegacyPetProfile,
   clearStoredPetId,
@@ -21,6 +20,7 @@ import {
   mapApiPetToProfile,
   readStoredPetId,
   writeStoredPetId,
+  type PetAvatarStatus,
   type PetProfile,
 } from "../../lib/pet";
 import {
@@ -35,11 +35,97 @@ import { AppHeaderNav } from "../../lib/AppHeaderNav";
 import { PetAvatarImage } from "../../lib/PetAvatarImage";
 import { cx, ui } from "../../lib/ui";
 
-const SPECIES_OPTIONS = ["猫", "狗", "兔子", "狐狸", "其他"] as const;
+const SPECIES_OPTIONS = ["猫咪", "狗狗", "兔子", "狐狸", "其他"] as const;
 const SIZE_OPTIONS = ["小型", "中型", "大型"] as const;
 const COLOR_OPTIONS = ["橘白", "纯黑", "奶油色", "灰白", "金色"] as const;
 const PERSONALITY_LIMIT = 160;
 const TRAITS_LIMIT = 140;
+const AVATAR_POLL_INTERVAL_MS = 2500;
+
+type AvatarState = {
+  avatarStatus: PetAvatarStatus;
+  avatarImageUrl: string | null;
+  avatarThumbUrl: string | null;
+  avatarVersion: number;
+  avatarError: string | null;
+  avatarUpdatedAt: string | null;
+};
+
+const EMPTY_AVATAR_STATE: AvatarState = {
+  avatarStatus: "missing",
+  avatarImageUrl: null,
+  avatarThumbUrl: null,
+  avatarVersion: 0,
+  avatarError: null,
+  avatarUpdatedAt: null,
+};
+
+function extractAvatarState(pet: Partial<ApiPet> | null | undefined): AvatarState {
+  return {
+    avatarStatus: pet?.avatarStatus ?? "missing",
+    avatarImageUrl: pet?.avatarImageUrl ?? null,
+    avatarThumbUrl: pet?.avatarThumbUrl ?? null,
+    avatarVersion: pet?.avatarVersion ?? 0,
+    avatarError: pet?.avatarError ?? null,
+    avatarUpdatedAt: pet?.avatarUpdatedAt ?? null,
+  };
+}
+
+function arePetProfilesEqual(left: PetProfile, right: PetProfile) {
+  return (
+    left.petName === right.petName &&
+    left.species === right.species &&
+    left.color === right.color &&
+    left.size === right.size &&
+    left.personality === right.personality &&
+    left.specialTraits === right.specialTraits
+  );
+}
+
+function buildAvatarStatusMeta(
+  avatarState: AvatarState,
+  hasUnsavedChanges: boolean
+) {
+  if (hasUnsavedChanges) {
+    return {
+      label: "草稿预览",
+      description: "当前展示的是基于表单实时绘制的 SVG 预览。保存后会自动生成新图片。",
+      toneClassName: ui.noticeInfo,
+    };
+  }
+
+  if (avatarState.avatarStatus === "pending") {
+    return {
+      label: "生成中",
+      description: "后台正在根据已保存的宠物信息生成图片，完成后会自动替换当前贴图。",
+      toneClassName: ui.noticeInfo,
+    };
+  }
+
+  if (avatarState.avatarStatus === "ready") {
+    return {
+      label: "已生成",
+      description: "当前已优先使用生成图片，家庭场景和资料页会同步显示这张形象图。",
+      toneClassName: ui.noticeSuccess,
+    };
+  }
+
+  if (avatarState.avatarStatus === "failed") {
+    return {
+      label: "生成失败",
+      description:
+        avatarState.avatarError ||
+        "图片生成没有成功，当前会继续使用 SVG 头像作为兜底。",
+      toneClassName: ui.noticeError,
+    };
+  }
+
+  return {
+    label: "等待生成",
+    description: "保存后会自动尝试生成宠物图片；在此之前继续使用 SVG 头像预览。",
+    toneClassName: ui.noticeInfo,
+  };
+}
 
 function CreatePetPageContent() {
   const router = useRouter();
@@ -47,6 +133,8 @@ function CreatePetPageContent() {
   const forceNew = searchParams.get("mode") === "new";
   const editId = searchParams.get("id") ? Number(searchParams.get("id")) : null;
   const [pet, setPet] = useState<PetProfile>(EMPTY_PET);
+  const [savedPetSnapshot, setSavedPetSnapshot] = useState<PetProfile>(EMPTY_PET);
+  const [avatarState, setAvatarState] = useState<AvatarState>(EMPTY_AVATAR_STATE);
   const [petId, setPetId] = useState<number | null>(null);
   const [authToken, setAuthToken] = useState<string | null>(null);
   const [isLoadingPet, setIsLoadingPet] = useState(true);
@@ -59,6 +147,14 @@ function CreatePetPageContent() {
   useEffect(() => {
     let isMounted = true;
 
+    const resetToNewPet = () => {
+      setPetId(null);
+      setPet(EMPTY_PET);
+      setSavedPetSnapshot(EMPTY_PET);
+      setAvatarState(EMPTY_AVATAR_STATE);
+      setFeedback(null);
+    };
+
     const loadPet = async () => {
       try {
         const storedAuthToken = readStoredAuthToken();
@@ -68,67 +164,183 @@ function CreatePetPageContent() {
           return;
         }
 
-        if (isMounted) setAuthToken(storedAuthToken);
+        if (isMounted) {
+          setAuthToken(storedAuthToken);
+        }
 
-        // mode=new：强制空表单，直接新建
         if (forceNew) {
-          if (isMounted) { setPetId(null); setPet(EMPTY_PET); setFeedback(null); }
+          if (isMounted) {
+            resetToNewPet();
+          }
           return;
         }
 
-        // id=xxx 或 storedPetId：加载指定宠物
         const targetId = editId ?? readStoredPetId();
 
-        if (targetId) {
-          const response = await fetch(`${API_BASE_URL}/pets/${targetId}`, {
-            cache: "no-store",
-            credentials: "include",
-            headers: buildAuthHeaders(storedAuthToken),
-          });
-
-          if (response.status === 401) {
-            clearStoredAuth();
-            router.replace("/?next=/create-pet");
-            return;
-          }
-
-          if (response.status === 404) {
-            clearStoredPetId();
-            if (isMounted) { setPetId(null); setPet(EMPTY_PET); setFeedback({ type: "info", message: "找不到该宠物，请重新创建。" }); }
-            return;
-          }
-
-          if (!response.ok) {
-            const errorMessage = await getResponseErrorMessage(response, "加载宠物资料失败，请稍后再试。");
-            if (isMounted) setFeedback({ type: "error", message: errorMessage });
-            return;
-          }
-
-          const data: unknown = await response.json();
-          if (isPetApiResponse(data) && isMounted) {
-            const loadedPet = mapApiPetToProfile(data.pet);
-            setPetId(data.pet.id);
-            setPet(loadedPet);
-            writeStoredPetId(data.pet.id);
-            clearLegacyPetProfile();
-            setFeedback(null);
+        if (!targetId) {
+          if (isMounted) {
+            resetToNewPet();
           }
           return;
         }
 
-        // 没有任何 id：空表单新建
-        if (isMounted) { setPetId(null); setPet(EMPTY_PET); setFeedback(null); }
+        const response = await fetch(`${API_BASE_URL}/pets/${targetId}`, {
+          cache: "no-store",
+          credentials: "include",
+          headers: buildAuthHeaders(storedAuthToken),
+        });
+
+        if (response.status === 401) {
+          clearStoredAuth();
+          router.replace("/?next=/create-pet");
+          return;
+        }
+
+        if (response.status === 404) {
+          clearStoredPetId();
+          if (isMounted) {
+            resetToNewPet();
+            setFeedback({
+              type: "info",
+              message: "没有找到这只宠物，已经切回新建模式。",
+            });
+          }
+          return;
+        }
+
+        if (!response.ok) {
+          const errorMessage = await getResponseErrorMessage(
+            response,
+            "加载宠物资料失败，请稍后再试。"
+          );
+          if (isMounted) {
+            setFeedback({ type: "error", message: errorMessage });
+          }
+          return;
+        }
+
+        const data: unknown = await response.json();
+
+        if (!isPetApiResponse(data)) {
+          if (isMounted) {
+            setFeedback({
+              type: "error",
+              message: "后端返回的宠物数据格式不正确。",
+            });
+          }
+          return;
+        }
+
+        if (isMounted) {
+          const loadedPet = mapApiPetToProfile(data.pet);
+          setPetId(data.pet.id);
+          setPet(loadedPet);
+          setSavedPetSnapshot(loadedPet);
+          setAvatarState(extractAvatarState(data.pet));
+          writeStoredPetId(data.pet.id);
+          clearLegacyPetProfile();
+          setFeedback(null);
+        }
       } catch {
-        if (isMounted) setFeedback({ type: "error", message: "暂时连不上后端，请确认服务已启动。" });
+        if (isMounted) {
+          setFeedback({
+            type: "error",
+            message: "暂时连不上后端，请确认服务已经启动。",
+          });
+        }
       } finally {
-        if (isMounted) setIsLoadingPet(false);
+        if (isMounted) {
+          setIsLoadingPet(false);
+        }
       }
     };
 
     void loadPet();
 
-    return () => { isMounted = false; };
+    return () => {
+      isMounted = false;
+    };
   }, [editId, forceNew, router]);
+
+  useEffect(() => {
+    if (!petId || !authToken || avatarState.avatarStatus !== "pending") {
+      return;
+    }
+
+    let cancelled = false;
+    let timeoutId: number | null = null;
+
+    const scheduleNextPoll = () => {
+      if (cancelled) {
+        return;
+      }
+
+      timeoutId = window.setTimeout(() => {
+        void pollAvatarState();
+      }, AVATAR_POLL_INTERVAL_MS);
+    };
+
+    const pollAvatarState = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/pets/${petId}`, {
+          cache: "no-store",
+          credentials: "include",
+          headers: buildAuthHeaders(authToken),
+        });
+
+        if (response.status === 401) {
+          clearStoredAuth();
+          setAuthToken(null);
+          router.replace("/?next=/create-pet");
+          return;
+        }
+
+        if (!response.ok) {
+          scheduleNextPoll();
+          return;
+        }
+
+        const data: unknown = await response.json();
+
+        if (!isPetApiResponse(data) || cancelled) {
+          scheduleNextPoll();
+          return;
+        }
+
+        const nextAvatarState = extractAvatarState(data.pet);
+        setAvatarState(nextAvatarState);
+
+        if (nextAvatarState.avatarStatus === "pending") {
+          scheduleNextPoll();
+          return;
+        }
+
+        const avatarErrorMessage = nextAvatarState.avatarError;
+
+        if (nextAvatarState.avatarStatus === "failed" && avatarErrorMessage) {
+          setFeedback((currentFeedback) =>
+            currentFeedback?.type === "error"
+              ? currentFeedback
+              : {
+                  type: "error",
+                  message: avatarErrorMessage,
+                }
+          );
+        }
+      } catch {
+        scheduleNextPoll();
+      }
+    };
+
+    void pollAvatarState();
+
+    return () => {
+      cancelled = true;
+      if (timeoutId) {
+        window.clearTimeout(timeoutId);
+      }
+    };
+  }, [authToken, avatarState.avatarStatus, petId, router]);
 
   const handlePetChange = (field: keyof PetProfile, value: string) => {
     setPet((currentPet) => ({
@@ -136,6 +348,91 @@ function CreatePetPageContent() {
       [field]: value,
     }));
     setFeedback(null);
+  };
+
+  const startAvatarGeneration = async (
+    targetPetId: number,
+    token: string,
+    trigger: "auto" | "manual"
+  ) => {
+    const previousAvatarState = avatarState;
+
+    setAvatarState((currentState) => ({
+      ...currentState,
+      avatarStatus: "pending",
+      avatarError: null,
+    }));
+
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/pets/${targetPetId}/avatar/regenerate`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: buildAuthHeaders(token),
+        }
+      );
+
+      if (response.status === 401) {
+        clearStoredAuth();
+        setAuthToken(null);
+        router.replace("/?next=/create-pet");
+        return { started: false, errorMessage: "登录状态已过期，请重新登录。" };
+      }
+
+      if (!response.ok) {
+        const errorMessage = await getResponseErrorMessage(
+          response,
+          "暂时无法开始生成宠物形象。"
+        );
+        setAvatarState({
+          ...previousAvatarState,
+          avatarError: errorMessage,
+        });
+        if (trigger === "manual") {
+          setFeedback({ type: "error", message: errorMessage });
+        }
+        return { started: false, errorMessage };
+      }
+
+      const data: unknown = await response.json();
+
+      if (!isPetApiResponse(data)) {
+        const errorMessage = "头像生成接口返回的数据格式不正确。";
+        setAvatarState({
+          ...previousAvatarState,
+          avatarError: errorMessage,
+        });
+        if (trigger === "manual") {
+          setFeedback({ type: "error", message: errorMessage });
+        }
+        return { started: false, errorMessage };
+      }
+
+      setAvatarState(extractAvatarState(data.pet));
+
+      if (trigger === "manual") {
+        setFeedback({
+          type: data.pet.avatarStatus === "pending" ? "success" : "info",
+          message:
+            data.pet.avatarStatus === "pending"
+              ? "已经开始重新生成宠物形象。"
+              : "宠物形象生成任务已在进行中。",
+        });
+      }
+
+      return { started: true, errorMessage: null };
+    } catch {
+      const errorMessage = "暂时连不上后端，无法开始生成宠物形象。";
+      setAvatarState({
+        ...previousAvatarState,
+        avatarError: errorMessage,
+      });
+      if (trigger === "manual") {
+        setFeedback({ type: "error", message: errorMessage });
+      }
+      return { started: false, errorMessage };
+    }
   };
 
   const handleSavePet = async () => {
@@ -169,6 +466,8 @@ function CreatePetPageContent() {
         if (response.status === 404 && isUpdating) {
           clearStoredPetId();
           setPetId(null);
+          setSavedPetSnapshot(EMPTY_PET);
+          setAvatarState(EMPTY_AVATAR_STATE);
           setFeedback({
             type: "error",
             message: "之前保存的宠物资料找不到了，请重新保存创建一次。",
@@ -193,33 +492,65 @@ function CreatePetPageContent() {
       if (!isPetApiResponse(data)) {
         setFeedback({
           type: "error",
-          message: "后端返回的数据格式不太对，请稍后再试。",
+          message: "后端返回的宠物数据格式不正确，请稍后再试。",
         });
         return;
       }
 
       const savedPet = mapApiPetToProfile(data.pet);
+      const baseSuccessMessage = isUpdating
+        ? "宠物资料已更新并同步到后端。"
+        : "宠物资料已创建并同步到后端。";
 
       setPetId(data.pet.id);
       setPet(savedPet);
+      setSavedPetSnapshot(savedPet);
+      setAvatarState(extractAvatarState(data.pet));
       writeStoredPetId(data.pet.id);
       clearLegacyPetProfile();
-      setFeedback({
-        type: "success",
-        message: isUpdating
-          ? "宠物资料已更新并同步到后端。"
-          : "宠物资料已创建并同步到后端。",
-      });
+
+      const generationResult = await startAvatarGeneration(
+        data.pet.id,
+        authToken,
+        "auto"
+      );
+
+      setFeedback(
+        generationResult.started
+          ? {
+              type: "success",
+              message: `${baseSuccessMessage} 宠物形象已开始自动生成。`,
+            }
+          : generationResult.errorMessage
+            ? {
+                type: "info",
+                message: `${baseSuccessMessage} ${generationResult.errorMessage}`,
+              }
+            : {
+                type: "success",
+                message: baseSuccessMessage,
+              }
+      );
     } catch {
       setFeedback({
         type: "error",
-        message: "暂时连不上后端，请确认服务已启动。",
+        message: "暂时连不上后端，请确认服务已经启动。",
       });
     } finally {
       setIsSavingPet(false);
     }
   };
 
+  const handleRegenerateAvatar = async () => {
+    if (!petId || !authToken || isLoadingPet || isSavingPet) {
+      return;
+    }
+
+    void startAvatarGeneration(petId, authToken, "manual");
+  };
+
+  const hasUnsavedChanges = !arePetProfilesEqual(pet, savedPetSnapshot);
+  const avatarStatusMeta = buildAvatarStatusMeta(avatarState, hasUnsavedChanges);
   const petCardName = pet.petName || "未命名宠物";
   const petCardSpecies = pet.species || "待选择品种";
   const petCardColor = pet.color || "待补充颜色";
@@ -240,26 +571,29 @@ function CreatePetPageContent() {
           currentPetName={petId !== null ? pet.petName || null : null}
           currentPetMeta={petId !== null ? pet.species || null : null}
         />
+
         <div className={ui.pageHero}>
           <div>
-          <p className={ui.pageEyebrow}>Pet profile</p>
-          <h1 className={ui.pageTitle}>
-            {petId !== null ? "编辑宠物" : "创建宠物"}
-          </h1>
-          <p className={ui.pageLead}>
-            {petId !== null
-              ? "修改后立即生效。"
-              : "填写基础资料。"}
-          </p>
+            <p className={ui.pageEyebrow}>Pet profile</p>
+            <h1 className={ui.pageTitle}>{petId !== null ? "编辑宠物" : "创建宠物"}</h1>
+            <p className={ui.pageLead}>
+              保存后会自动触发宠物形象生成。生成成功后，项目中的头像贴图会优先使用这张图片。
+            </p>
           </div>
         </div>
 
         <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_420px]">
-          <form className={`space-y-5 ${ui.cardElevated} p-4 sm:p-6`}>
+          <form
+            className={`space-y-5 ${ui.cardElevated} p-4 sm:p-6`}
+            onSubmit={(event) => {
+              event.preventDefault();
+              void handleSavePet();
+            }}
+          >
             <div>
               <p className={ui.sectionTitle}>基础身份</p>
               <p className="mt-2 text-sm leading-6 text-stone-600">
-                先给这只宠物一个清楚的角色轮廓。
+                先把宠物的基础资料定下来，保存后系统会基于这些信息自动生成形象图。
               </p>
             </div>
 
@@ -276,7 +610,7 @@ function CreatePetPageContent() {
                 type="text"
                 disabled={isLoadingPet || isSavingPet}
                 value={pet.petName}
-                onChange={(e) => handlePetChange("petName", e.target.value)}
+                onChange={(event) => handlePetChange("petName", event.target.value)}
                 placeholder="例如：小泡芙"
                 className={ui.input}
               />
@@ -326,7 +660,7 @@ function CreatePetPageContent() {
                 type="text"
                 disabled={isLoadingPet || isSavingPet}
                 value={pet.color}
-                onChange={(e) => handlePetChange("color", e.target.value)}
+                onChange={(event) => handlePetChange("color", event.target.value)}
                 placeholder="例如：橘白、纯黑、奶油色"
                 className={ui.input}
               />
@@ -337,7 +671,10 @@ function CreatePetPageContent() {
                     type="button"
                     disabled={isLoadingPet || isSavingPet}
                     onClick={() => handlePetChange("color", color)}
-                    className={cx(ui.statusBadgeNeutral, pet.color === color && "border-stone-900 bg-stone-900 text-white")}
+                    className={cx(
+                      ui.statusBadgeNeutral,
+                      pet.color === color && "border-stone-900 bg-stone-900 text-white"
+                    )}
                   >
                     {color}
                   </button>
@@ -360,7 +697,11 @@ function CreatePetPageContent() {
                     disabled={isLoadingPet || isSavingPet}
                     onClick={() => handlePetChange("size", size)}
                     aria-pressed={pet.size === size}
-                    className={cx(ui.tab, "justify-center rounded-xl py-3", pet.size === size && ui.tabActive)}
+                    className={cx(
+                      ui.tab,
+                      "justify-center rounded-xl py-3",
+                      pet.size === size && ui.tabActive
+                    )}
                   >
                     {size}
                   </button>
@@ -385,8 +726,10 @@ function CreatePetPageContent() {
                 rows={4}
                 disabled={isLoadingPet || isSavingPet}
                 value={pet.personality}
-                onChange={(e) => handlePetChange("personality", e.target.value)}
-                placeholder="例如：很黏人，喜欢撒娇，看到新朋友会先观察一下。"
+                onChange={(event) =>
+                  handlePetChange("personality", event.target.value)
+                }
+                placeholder="例如：很黏人，喜欢撒娇，见到新朋友会先观察一下。"
                 className={ui.input}
               />
               <p className="mt-2 text-right text-xs text-stone-500">
@@ -407,7 +750,9 @@ function CreatePetPageContent() {
                 rows={4}
                 disabled={isLoadingPet || isSavingPet}
                 value={pet.specialTraits}
-                onChange={(e) => handlePetChange("specialTraits", e.target.value)}
+                onChange={(event) =>
+                  handlePetChange("specialTraits", event.target.value)
+                }
                 placeholder="例如：左耳有一点卷，尾巴尖是白色，脖子上有一圈浅色毛。"
                 className={ui.input}
               />
@@ -417,16 +762,13 @@ function CreatePetPageContent() {
             </div>
 
             {isLoadingPet ? (
-              <div className={ui.noticeInfo}>
-                正在读取宠物资料。
-              </div>
+              <div className={ui.noticeInfo}>正在读取宠物资料。</div>
             ) : null}
 
             <div className={`${ui.stickyActionBar} mt-2`}>
               <div className="flex flex-wrap items-center gap-3">
                 <button
-                  type="button"
-                  onClick={handleSavePet}
+                  type="submit"
                   disabled={isLoadingPet || isSavingPet}
                   className="inline-flex items-center justify-center rounded-xl bg-white px-5 py-3 text-sm font-semibold text-stone-950 transition hover:bg-stone-100 disabled:cursor-not-allowed disabled:opacity-60"
                 >
@@ -436,6 +778,17 @@ function CreatePetPageContent() {
                       ? "更新宠物信息"
                       : "保存宠物信息"}
                 </button>
+
+                {petId ? (
+                  <button
+                    type="button"
+                    onClick={handleRegenerateAvatar}
+                    disabled={isLoadingPet || isSavingPet}
+                    className={ui.buttonSecondary}
+                  >
+                    重新生成形象
+                  </button>
+                ) : null}
 
                 <Link
                   href="/my-pet"
@@ -461,17 +814,18 @@ function CreatePetPageContent() {
             </div>
           </form>
 
-          <section className={`${ui.cardWarm} p-4 sm:p-6 lg:sticky lg:top-6 lg:self-start`}>
+          <section
+            className={`${ui.cardWarm} p-4 sm:p-6 lg:sticky lg:top-6 lg:self-start`}
+          >
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h2 className="text-2xl font-semibold text-gray-900">
-                  宠物资料预览
-                </h2>
+                <h2 className="text-2xl font-semibold text-gray-900">宠物资料预览</h2>
+                <p className="mt-2 text-sm leading-6 text-gray-600">
+                  草稿阶段实时看 SVG 预览，保存后会自动切换到生成图片。
+                </p>
               </div>
 
-              <div className={ui.chip}>
-                实时同步
-              </div>
+              <div className={ui.chip}>{avatarStatusMeta.label}</div>
             </div>
 
             <div className={`mt-6 overflow-hidden ${ui.cardInset}`}>
@@ -480,23 +834,22 @@ function CreatePetPageContent() {
                   <div className="flex flex-col items-center">
                     <PetAvatarImage
                       pet={pet}
+                      imageUrl={avatarState.avatarImageUrl}
+                      avatarStatus={avatarState.avatarStatus}
+                      preferGeneratedImage={!hasUnsavedChanges}
                       className="h-28 w-28 rounded-[2rem] bg-white shadow-sm ring-8 ring-white/70"
                     />
+
                     <div className="mt-3 flex items-center gap-2 rounded-full bg-white/80 px-3 py-2 text-xs text-gray-500 shadow-sm">
                       <span
                         className={`h-3 w-3 rounded-full ring-1 ring-black/5 ${petColorDisplay.swatchClass}`}
                       />
                       {petColorDisplay.helper}
                     </div>
-                    <p className="mt-2 text-center text-[11px] leading-5 text-amber-700">
-                      根据描述实时绘制
-                    </p>
                   </div>
 
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-amber-700">
-                      宠物资料卡片
-                    </p>
+                    <p className="text-sm font-medium text-amber-700">宠物资料卡片</p>
                     <h3 className="mt-2 text-3xl font-semibold tracking-tight text-gray-900">
                       {petCardName}
                     </h3>
@@ -514,9 +867,17 @@ function CreatePetPageContent() {
                         {petColorDisplay.label}
                       </span>
                     </div>
+
                     <p className="mt-3 text-xs leading-6 text-amber-700">
                       {petSpeciesVisual.note}
                     </p>
+                  </div>
+                </div>
+
+                <div className="mt-5">
+                  <div className={avatarStatusMeta.toneClassName}>
+                    <p className="font-medium">{avatarStatusMeta.label}</p>
+                    <p className="mt-2 text-sm leading-6">{avatarStatusMeta.description}</p>
                   </div>
                 </div>
 
@@ -563,57 +924,42 @@ function CreatePetPageContent() {
                     {petAppearanceSummary}
                   </p>
                 </div>
-
-                <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                  <div className="rounded-2xl border border-orange-100 bg-white/75 p-4 shadow-sm">
-                    <p className="text-sm font-medium text-gray-900">气质标签</p>
-                    <div className="mt-3 flex items-start gap-3">
-                      <span
-                        className={`inline-flex rounded-full border px-3 py-1 text-sm font-semibold ${petTemperamentTag.className}`}
-                      >
-                        {petTemperamentTag.label}
-                      </span>
-                      <p className="min-w-0 text-sm leading-6 text-gray-600">
-                        {petTemperamentTag.note}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="rounded-2xl border border-orange-100 bg-white/75 p-4 shadow-sm">
-                    <p className="text-sm font-medium text-gray-900">社交状态</p>
-                    <div className="mt-3 flex items-start gap-3">
-                      <span
-                        className={`inline-flex rounded-full border px-3 py-1 text-sm font-semibold ${petSocialStatus.className}`}
-                      >
-                        {petSocialStatus.label}
-                      </span>
-                      <p className="min-w-0 text-sm leading-6 text-gray-600">
-                        {petSocialStatus.note}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-4 rounded-2xl border border-dashed border-orange-200 bg-orange-50/70 p-4 text-sm leading-6 text-gray-600">
-                  外观和设定会随输入实时更新。
-                </div>
               </div>
 
               <div className="space-y-4 p-6">
                 <div className={`${ui.cardSoft} p-4`}>
                   <p className="text-sm font-medium text-gray-900">性格摘要</p>
+                  <div className="mt-3 flex items-start gap-3">
+                    <span
+                      className={`inline-flex rounded-full border px-3 py-1 text-sm font-semibold ${petTemperamentTag.className}`}
+                    >
+                      {petTemperamentTag.label}
+                    </span>
+                    <p className="min-w-0 text-sm leading-6 text-gray-600">
+                      {petCardPersonality}
+                    </p>
+                  </div>
+                </div>
+
+                <div className={`${ui.cardSoft} p-4`}>
+                  <p className="text-sm font-medium text-gray-900">特殊特征摘要</p>
                   <p className="mt-3 text-sm leading-7 text-gray-600">
-                    {petCardPersonality}
+                    {petCardSpecialTraits}
                   </p>
                 </div>
 
                 <div className={`${ui.cardSoft} p-4`}>
-                  <p className="text-sm font-medium text-gray-900">
-                    特殊特征摘要
-                  </p>
-                  <p className="mt-3 text-sm leading-7 text-gray-600">
-                    {petCardSpecialTraits}
-                  </p>
+                  <p className="text-sm font-medium text-gray-900">社交状态倾向</p>
+                  <div className="mt-3 flex items-start gap-3">
+                    <span
+                      className={`inline-flex rounded-full border px-3 py-1 text-sm font-semibold ${petSocialStatus.className}`}
+                    >
+                      {petSocialStatus.label}
+                    </span>
+                    <p className="min-w-0 text-sm leading-6 text-gray-600">
+                      {petSocialStatus.note}
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>

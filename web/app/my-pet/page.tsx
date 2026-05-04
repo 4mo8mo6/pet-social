@@ -19,12 +19,10 @@ import {
   clearStoredPetId,
   getResponseErrorMessage,
   isPetApiResponse,
-  mapApiPetToProfile,
   readStoredPetId,
   recoverLatestPetForCurrentUser,
   type ApiPet,
   writeStoredPetId,
-  type PetProfile,
 } from "../../lib/pet";
 import {
   getAppearanceSummary,
@@ -47,7 +45,7 @@ import { PetAvatarImage } from "../../lib/PetAvatarImage";
 import { ui } from "../../lib/ui";
 
 export default function MyPetPage() {
-  const [pet, setPet] = useState<PetProfile | null>(null);
+  const [pet, setPet] = useState<ApiPet | null>(null);
   const [petId, setPetId] = useState<number | null>(null);
   const [petStatus, setPetStatus] = useState<PetStatus | null>(null);
   const [petStatusViewState, setPetStatusViewState] =
@@ -226,7 +224,8 @@ export default function MyPetPage() {
                 isMessageListResponse(restoredMessagesData)
               ) {
                 if (isMounted) {
-                  setPet(mapApiPetToProfile(restoredPetData.pet));
+                  setPet(restoredPetData.pet);
+                  setPetId(restoredPetData.pet.id);
                   setMessages(restoredMessagesData.messages);
                   setStatusMessage(null);
                   setRecentChatStatus(null);
@@ -292,7 +291,8 @@ export default function MyPetPage() {
           );
 
           if (isMounted) {
-            setPet(mapApiPetToProfile(petData.pet));
+            setPet(petData.pet);
+            setPetId(petData.pet.id);
             setMessages([]);
             setStatusMessage(null);
             setRecentChatStatus(errorMessage);
@@ -305,7 +305,8 @@ export default function MyPetPage() {
 
         if (!isMessageListResponse(messagesData)) {
           if (isMounted) {
-            setPet(mapApiPetToProfile(petData.pet));
+            setPet(petData.pet);
+            setPetId(petData.pet.id);
             setMessages([]);
             setStatusMessage(null);
             setRecentChatStatus("最近聊天数据格式不太对，请稍后再试。");
@@ -315,7 +316,7 @@ export default function MyPetPage() {
         }
 
         if (isMounted) {
-          setPet(mapApiPetToProfile(petData.pet));
+          setPet(petData.pet);
           setPetId(petData.pet.id);
           setMessages(messagesData.messages);
           setStatusMessage(null);

@@ -15,6 +15,7 @@ web/.env.local
 .venv-backend-test/
 api/.venv/
 api/*.log
+api/media/
 web/*.log
 tmp-*.png
 web/next-dev.log

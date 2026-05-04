@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -15,6 +15,11 @@ from app.schemas import (
     PetUpdate,
 )
 from app.services.auth import get_current_user
+from app.services.pet_avatar import (
+    generate_pet_avatar_for_pet_id,
+    is_pet_avatar_generation_enabled,
+    mark_pet_avatar_pending,
+)
 from app.services.pet_chat import create_pet_chat_turn
 from app.services.pet_stats import (
     apply_decay_and_save,
@@ -115,6 +120,52 @@ def update_pet(
 
     return PetDetailResponse(
         message="宠物资料更新成功。",
+        pet=build_pet_response(pet),
+    )
+
+
+@router.post(
+    "/pets/{pet_id}/avatar/regenerate",
+    response_model=PetDetailResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def regenerate_pet_avatar(
+    pet_id: int,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> PetDetailResponse:
+    pet = get_owned_pet_or_404(db, pet_id, current_user.id)
+
+    if not is_pet_avatar_generation_enabled():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Pet avatar generation is not configured on the server.",
+        )
+
+    if pet.avatar_status == "pending":
+        return PetDetailResponse(
+            message="Pet avatar generation is already in progress.",
+            pet=build_pet_response(pet),
+        )
+
+    mark_pet_avatar_pending(pet)
+
+    try:
+        db.add(pet)
+        db.commit()
+        db.refresh(pet)
+    except SQLAlchemyError as error:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to start pet avatar generation.",
+        ) from error
+
+    background_tasks.add_task(generate_pet_avatar_for_pet_id, pet.id)
+
+    return PetDetailResponse(
+        message="Pet avatar generation started.",
         pet=build_pet_response(pet),
     )
 

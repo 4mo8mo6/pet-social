@@ -10,7 +10,19 @@ export type PetProfile = {
   specialTraits: string;
 };
 
-export type ApiPet = PetProfile & {
+export type PetAvatarStatus = "missing" | "pending" | "ready" | "failed";
+
+export type PetAvatarFields = {
+  avatarStatus?: PetAvatarStatus;
+  avatarImageUrl?: string | null;
+  avatarThumbUrl?: string | null;
+  avatarVersion?: number;
+  avatarError?: string | null;
+  avatarUpdatedAt?: string | null;
+};
+
+export type ApiPet = PetProfile &
+  PetAvatarFields & {
   id: number;
   createdAt: string;
   updatedAt: string;
@@ -98,6 +110,41 @@ export const mapApiPetToProfile = (pet: ApiPet): PetProfile => ({
   personality: pet.personality,
   specialTraits: pet.specialTraits,
 });
+
+export const isPetAvatarStatus = (value: unknown): value is PetAvatarStatus =>
+  value === "missing" ||
+  value === "pending" ||
+  value === "ready" ||
+  value === "failed";
+
+export const resolvePetAvatarImageUrl = (imageUrl?: string | null) => {
+  if (!imageUrl) {
+    return null;
+  }
+
+  const normalizedImageUrl = imageUrl.trim();
+
+  if (!normalizedImageUrl) {
+    return null;
+  }
+
+  if (
+    normalizedImageUrl.startsWith("http://") ||
+    normalizedImageUrl.startsWith("https://") ||
+    normalizedImageUrl.startsWith("data:") ||
+    normalizedImageUrl.startsWith("blob:")
+  ) {
+    return normalizedImageUrl;
+  }
+
+  const normalizedBaseUrl = API_BASE_URL.replace(/\/$/, "");
+
+  if (normalizedImageUrl.startsWith("/")) {
+    return `${normalizedBaseUrl}${normalizedImageUrl}`;
+  }
+
+  return `${normalizedBaseUrl}/${normalizedImageUrl}`;
+};
 
 export const clearStoredPetId = () => {
   if (typeof window === "undefined") {

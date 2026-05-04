@@ -196,6 +196,20 @@ function Set-SecretVariable {
   }
 }
 
+function Add-PlainVariableIfPresent {
+  param(
+    [System.Collections.Generic.List[string]]$Variables,
+    [string]$Key,
+    [string]$Value
+  )
+
+  if ([string]::IsNullOrWhiteSpace($Value)) {
+    return
+  }
+
+  $Variables.Add("${Key}=${Value}")
+}
+
 function Get-ServiceVariableValue {
   param(
     [string[]]$CandidateServices,
@@ -244,6 +258,15 @@ try {
   $secondMeOauthUrl = Require-Setting -ApiEnv $apiEnv -WebEnv $webEnv -Name "SECONDME_OAUTH_URL" -DefaultValue "https://go.second.me/oauth/"
   $secondMeTokenEndpoint = Require-Setting -ApiEnv $apiEnv -WebEnv $webEnv -Name "SECONDME_TOKEN_ENDPOINT" -DefaultValue "https://api.mindverse.com/gate/lab/api/oauth/token/code"
   $secondMeRefreshEndpoint = Require-Setting -ApiEnv $apiEnv -WebEnv $webEnv -Name "SECONDME_REFRESH_ENDPOINT" -DefaultValue "https://api.mindverse.com/gate/lab/api/oauth/token/refresh"
+  $petAvatarGenerationUrl = Get-Setting -ApiEnv $apiEnv -WebEnv $webEnv -Name "PET_AVATAR_GENERATION_URL"
+  $petAvatarApiKey = Get-Setting -ApiEnv $apiEnv -WebEnv $webEnv -Name "PET_AVATAR_API_KEY"
+  $petAvatarModel = Get-Setting -ApiEnv $apiEnv -WebEnv $webEnv -Name "PET_AVATAR_MODEL"
+  $petAvatarImageSize = Get-Setting -ApiEnv $apiEnv -WebEnv $webEnv -Name "PET_AVATAR_IMAGE_SIZE"
+  $petAvatarImageQuality = Get-Setting -ApiEnv $apiEnv -WebEnv $webEnv -Name "PET_AVATAR_IMAGE_QUALITY"
+  $petAvatarBackground = Get-Setting -ApiEnv $apiEnv -WebEnv $webEnv -Name "PET_AVATAR_BACKGROUND"
+  $petAvatarTimeoutSeconds = Get-Setting -ApiEnv $apiEnv -WebEnv $webEnv -Name "PET_AVATAR_TIMEOUT_SECONDS" -DefaultValue "60"
+  $petAvatarMediaRoot = Get-Setting -ApiEnv $apiEnv -WebEnv $webEnv -Name "PET_AVATAR_MEDIA_ROOT" -DefaultValue "/app/media"
+  $petAvatarPromptSuffix = Get-Setting -ApiEnv $apiEnv -WebEnv $webEnv -Name "PET_AVATAR_PROMPT_SUFFIX"
 
   Ensure-LinkedProject -ProjectName $ProjectName -Workspace $Workspace
 
@@ -256,7 +279,8 @@ try {
     "postgres"
   ) -Key "DATABASE_URL"
 
-  Set-PlainVariables -Service $AppService -Variables @(
+  $plainVariables = [System.Collections.Generic.List[string]]::new()
+  @(
     "APP_ENV=production",
     'CORS_ALLOWED_ORIGINS=https://${{RAILWAY_PUBLIC_DOMAIN}}',
     'NEXT_PUBLIC_APP_BASE_URL=https://${{RAILWAY_PUBLIC_DOMAIN}}',
@@ -268,12 +292,32 @@ try {
     'SECONDME_REDIRECT_URI=https://${{RAILWAY_PUBLIC_DOMAIN}}/api/auth/secondme/callback',
     "LLM_BASE_URL=$llmBaseUrl",
     "LLM_MODEL=$llmModel"
-  )
+  ) | ForEach-Object { $plainVariables.Add($_) }
+
+  if (-not [string]::IsNullOrWhiteSpace($petAvatarGenerationUrl)) {
+    if ([string]::IsNullOrWhiteSpace($petAvatarApiKey)) {
+      throw "Missing required setting: PET_AVATAR_API_KEY when PET_AVATAR_GENERATION_URL is set."
+    }
+
+    Add-PlainVariableIfPresent -Variables $plainVariables -Key "PET_AVATAR_GENERATION_URL" -Value $petAvatarGenerationUrl
+    Add-PlainVariableIfPresent -Variables $plainVariables -Key "PET_AVATAR_MODEL" -Value $petAvatarModel
+    Add-PlainVariableIfPresent -Variables $plainVariables -Key "PET_AVATAR_IMAGE_SIZE" -Value $petAvatarImageSize
+    Add-PlainVariableIfPresent -Variables $plainVariables -Key "PET_AVATAR_IMAGE_QUALITY" -Value $petAvatarImageQuality
+    Add-PlainVariableIfPresent -Variables $plainVariables -Key "PET_AVATAR_BACKGROUND" -Value $petAvatarBackground
+    Add-PlainVariableIfPresent -Variables $plainVariables -Key "PET_AVATAR_TIMEOUT_SECONDS" -Value $petAvatarTimeoutSeconds
+    Add-PlainVariableIfPresent -Variables $plainVariables -Key "PET_AVATAR_MEDIA_ROOT" -Value $petAvatarMediaRoot
+    Add-PlainVariableIfPresent -Variables $plainVariables -Key "PET_AVATAR_PROMPT_SUFFIX" -Value $petAvatarPromptSuffix
+  }
+
+  Set-PlainVariables -Service $AppService -Variables $plainVariables.ToArray()
 
   Set-SecretVariable -Service $AppService -Key "SECONDME_CLIENT_ID" -Value $secondMeClientId
   Set-SecretVariable -Service $AppService -Key "SECONDME_CLIENT_SECRET" -Value $secondMeClientSecret
   Set-SecretVariable -Service $AppService -Key "LLM_API_KEY" -Value $llmApiKey
   Set-SecretVariable -Service $AppService -Key "DATABASE_URL" -Value $databaseUrl
+  if (-not [string]::IsNullOrWhiteSpace($petAvatarGenerationUrl)) {
+    Set-SecretVariable -Service $AppService -Key "PET_AVATAR_API_KEY" -Value $petAvatarApiKey
+  }
 
   $domainResult = Invoke-RailwayResult -Arguments @("domain", "-s", $AppService, "-p", "3000", "--json")
   if ($domainResult.ExitCode -eq 0) {

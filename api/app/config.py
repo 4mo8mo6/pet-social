@@ -1,5 +1,6 @@
 import os
 from dataclasses import dataclass
+from pathlib import Path
 
 LOCAL_WEB_ORIGINS = (
     "http://localhost:3000",
@@ -73,6 +74,15 @@ class Settings:
     database_url_override: str | None
     redis_url_override: str | None
     cors_allowed_origins: tuple[str, ...]
+    pet_avatar_generation_url: str | None
+    pet_avatar_api_key: str | None
+    pet_avatar_model: str | None
+    pet_avatar_image_size: str | None
+    pet_avatar_image_quality: str | None
+    pet_avatar_background: str | None
+    pet_avatar_timeout_seconds: int
+    pet_avatar_media_root: str
+    pet_avatar_prompt_suffix: str | None
 
     @property
     def database_url(self) -> str:
@@ -91,9 +101,14 @@ class Settings:
 
         return f"redis://{self.redis_host}:{self.redis_port}/0"
 
+    @property
+    def pet_avatar_generation_enabled(self) -> bool:
+        return bool(self.pet_avatar_generation_url)
+
 
 def get_settings() -> Settings:
     environment = os.getenv("APP_ENV", "development").strip() or "development"
+    default_media_root = str(Path(__file__).resolve().parent.parent / "media")
     database_url_override = _read_optional_env("DATABASE_URL", "POSTGRES_URL")
     redis_url_override = _read_optional_env(
         "REDIS_URL",
@@ -129,4 +144,38 @@ def get_settings() -> Settings:
         ),
         redis_url_override=redis_url_override,
         cors_allowed_origins=_read_cors_allowed_origins(environment),
+        pet_avatar_generation_url=_read_optional_env(
+            "PET_AVATAR_GENERATION_URL",
+            "PET_AVATAR_IMAGE_API_URL",
+        ),
+        pet_avatar_api_key=_read_optional_env(
+            "PET_AVATAR_API_KEY",
+            "PET_AVATAR_IMAGE_API_KEY",
+        ),
+        pet_avatar_model=_read_optional_env(
+            "PET_AVATAR_MODEL",
+            "PET_AVATAR_IMAGE_MODEL",
+        ),
+        pet_avatar_image_size=_read_optional_env(
+            "PET_AVATAR_IMAGE_SIZE",
+            "PET_AVATAR_SIZE",
+        ),
+        pet_avatar_image_quality=_read_optional_env(
+            "PET_AVATAR_IMAGE_QUALITY",
+            "PET_AVATAR_QUALITY",
+        ),
+        pet_avatar_background=_read_optional_env(
+            "PET_AVATAR_BACKGROUND",
+            "PET_AVATAR_IMAGE_BACKGROUND",
+        ),
+        pet_avatar_timeout_seconds=_read_int_env(
+            "PET_AVATAR_TIMEOUT_SECONDS",
+            default=60,
+        ),
+        pet_avatar_media_root=os.getenv(
+            "PET_AVATAR_MEDIA_ROOT",
+            default_media_root,
+        ).strip()
+        or default_media_root,
+        pet_avatar_prompt_suffix=_read_optional_env("PET_AVATAR_PROMPT_SUFFIX"),
     )

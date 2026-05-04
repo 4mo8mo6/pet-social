@@ -1,6 +1,10 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import AnyUrl, BaseModel, Field, field_validator
+
+
+PetAvatarStatus = Literal["missing", "pending", "ready", "failed"]
 
 
 class PetBase(BaseModel):
@@ -47,6 +51,12 @@ class PetResponse(BaseModel):
     size: str
     personality: str
     specialTraits: str
+    avatarStatus: PetAvatarStatus
+    avatarImageUrl: str | None = None
+    avatarThumbUrl: str | None = None
+    avatarVersion: int = 0
+    avatarError: str | None = None
+    avatarUpdatedAt: datetime | None = None
     createdAt: datetime
     updatedAt: datetime
 

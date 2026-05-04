@@ -1,5 +1,8 @@
+from pathlib import Path
+
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 
 from app.api import all_routers
@@ -12,6 +15,8 @@ from app.services.pets import build_pet_response
 from app.startup import run_shutdown, run_startup
 
 settings = get_settings()
+media_root = Path(settings.pet_avatar_media_root)
+media_root.mkdir(parents=True, exist_ok=True)
 
 app = FastAPI(title=settings.app_name)
 app.add_middleware(
@@ -21,6 +26,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.mount("/media", StaticFiles(directory=media_root), name="media")
 
 
 @app.get("/pets", response_model=PetListResponse)

@@ -27,6 +27,10 @@ class Pet(Base):
             "social_emotion IS NULL OR social_emotion IN ('calm', 'curious', 'guarded', 'excited', 'warm')",
             name="check_pet_social_emotion",
         ),
+        CheckConstraint(
+            "avatar_status IN ('missing', 'pending', 'ready', 'failed')",
+            name="check_pet_avatar_status",
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
@@ -52,6 +56,16 @@ class Pet(Base):
         String(120), nullable=True, default=None
     )
     social_updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    avatar_status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="missing"
+    )
+    avatar_image_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    avatar_thumb_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    avatar_version: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    avatar_error: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    avatar_updated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
     last_fed_at: Mapped[datetime | None] = mapped_column(

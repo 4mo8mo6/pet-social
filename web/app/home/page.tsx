@@ -1099,6 +1099,9 @@ export default function HomeScenePage() {
                             petSize: p.size,
                             petPersonality: p.personality,
                             petSpecialTraits: p.specialTraits,
+                            petAvatarImageUrl: p.avatarImageUrl ?? null,
+                            petAvatarStatus: p.avatarStatus ?? "missing",
+                            petAvatarVersion: p.avatarVersion ?? 0,
                             petStatus: petStatuses.get(p.id) ?? null,
                             recentSocialEmotion: normalizeHomeSocialEmotion(
                               petStatuses.get(p.id)?.socialEmotion ?? null
@@ -1113,6 +1116,9 @@ export default function HomeScenePage() {
                               petSize: pet.size,
                               petPersonality: pet.personality,
                               petSpecialTraits: pet.specialTraits,
+                              petAvatarImageUrl: pet.avatarImageUrl ?? null,
+                              petAvatarStatus: pet.avatarStatus ?? "missing",
+                              petAvatarVersion: pet.avatarVersion ?? 0,
                               petStatus: status,
                               recentSocialEmotion: normalizeHomeSocialEmotion(
                                 status?.socialEmotion ?? null

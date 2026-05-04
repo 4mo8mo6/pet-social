@@ -24,6 +24,12 @@ def build_pet_response(pet: Pet) -> PetResponse:
         size=pet.size,
         personality=pet.personality,
         specialTraits=pet.special_traits,
+        avatarStatus=pet.avatar_status,
+        avatarImageUrl=pet.avatar_image_url,
+        avatarThumbUrl=pet.avatar_thumb_url,
+        avatarVersion=pet.avatar_version,
+        avatarError=pet.avatar_error,
+        avatarUpdatedAt=pet.avatar_updated_at,
         createdAt=pet.created_at,
         updatedAt=pet.updated_at,
     )

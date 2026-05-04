@@ -23,6 +23,7 @@ import {
   buildPetAvatarSpec,
   type PetAvatarInput,
 } from "./pet-avatar";
+import { resolvePetAvatarImageUrl } from "./pet";
 import type { PetStatus } from "./PetStatusPanel";
 
 export type SceneAction = "pet" | HomeSceneObjectAction;
@@ -35,6 +36,9 @@ export type PetSceneData = {
   petSize?: string;
   petPersonality?: string;
   petSpecialTraits?: string;
+  petAvatarImageUrl?: string | null;
+  petAvatarStatus?: "missing" | "pending" | "ready" | "failed";
+  petAvatarVersion?: number;
   petStatus: PetStatus | null;
   recentSocialEmotion?: HomeSocialEmotion | null;
 };
@@ -180,7 +184,19 @@ function buildScenePetAvatarInput(petData: PetSceneData): PetAvatarInput {
 }
 
 function getScenePetAvatarTextureKey(petData: PetSceneData) {
-  return `home-pet-avatar-${petData.id}-${buildScenePetAvatarSpec(petData).seed}`;
+  if (resolveScenePetAvatarImageUrl(petData)) {
+    return `home-pet-avatar-${petData.id}-generated-${petData.petAvatarVersion ?? 0}`;
+  }
+
+  return `home-pet-avatar-${petData.id}-svg-${buildScenePetAvatarSpec(petData).seed}`;
+}
+
+function resolveScenePetAvatarImageUrl(petData: PetSceneData) {
+  if (petData.petAvatarStatus !== "ready") {
+    return null;
+  }
+
+  return resolvePetAvatarImageUrl(petData.petAvatarImageUrl ?? null);
 }
 
 function getRoomPetPoint(roomId: HomeRoomId, slotIndex: number) {
@@ -545,7 +561,11 @@ function generateTextureIfMissing(
   graphics.destroy();
 }
 
-function queuePetAvatarTextures(scene: PhaserType.Scene, pets: PetSceneData[]) {
+function queuePetAvatarTextures(
+  scene: PhaserType.Scene,
+  pets: PetSceneData[],
+  forceSvgFallback = false
+) {
   let queuedCount = 0;
 
   pets.forEach((petData) => {
@@ -555,13 +575,22 @@ function queuePetAvatarTextures(scene: PhaserType.Scene, pets: PetSceneData[]) {
       return;
     }
 
-    scene.load.image(
-      textureKey,
-      buildPetAvatarBase64DataUri(buildScenePetAvatarInput(petData), {
-        size: 256,
-        transparent: true,
-      })
-    );
+    const generatedAvatarImageUrl = forceSvgFallback
+      ? null
+      : resolveScenePetAvatarImageUrl(petData);
+
+    if (generatedAvatarImageUrl) {
+      scene.load.setCORS("anonymous");
+      scene.load.image(textureKey, generatedAvatarImageUrl);
+    } else {
+      scene.load.image(
+        textureKey,
+        buildPetAvatarBase64DataUri(buildScenePetAvatarInput(petData), {
+          size: 256,
+          transparent: true,
+        })
+      );
+    }
     queuedCount += 1;
   });
 
@@ -2257,8 +2286,27 @@ function createHomeScene(
       });
     };
 
+    const queueSvgFallbacksForMissingPetTextures = () => {
+      const petsMissingTextures = refs.petsRef.current.filter(
+        (petData) => !scene.textures.exists(getScenePetAvatarTextureKey(petData))
+      );
+
+      if (petsMissingTextures.length === 0) {
+        finishSceneCreate();
+        return;
+      }
+
+      if (queuePetAvatarTextures(scene, petsMissingTextures, true) > 0) {
+        scene.load.once("complete", finishSceneCreate);
+        scene.load.start();
+        return;
+      }
+
+      finishSceneCreate();
+    };
+
     if (queuePetAvatarTextures(scene, refs.petsRef.current) > 0) {
-      scene.load.once("complete", finishSceneCreate);
+      scene.load.once("complete", queueSvgFallbacksForMissingPetTextures);
       scene.load.start();
       return;
     }
@@ -2297,7 +2345,7 @@ export function PetHomeScene({
   latestEditErrorRef.current = onEditError;
 
   const petAvatarSignature = pets
-    .map((pet) => `${pet.id}:${buildScenePetAvatarSpec(pet).seed}`)
+    .map((pet) => getScenePetAvatarTextureKey(pet))
     .join("|");
 
   useEffect(() => {
